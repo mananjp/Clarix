@@ -144,6 +144,7 @@ class FieldAnswerUpdate(BaseModel):
     answer_text: str
     status: str = "Draft"
     approved_by_user_id: Optional[str] = None  # review workflow user ID
+    answer_json: Optional[Dict[str, Any]] = None
 
 class FieldAnswer(FieldAnswerBase):
     id: str
@@ -208,3 +209,20 @@ class MatrixItem(BaseModel):
     
     validation_passed: bool = True
     validation_errors: List[str] = []
+
+
+# --- Audit Log Schema ---
+class AuditLogResponse(BaseModel):
+    id: str
+    entity_type: str
+    entity_id: str
+    action: str
+    actor_id: Optional[str] = None
+    project_id: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    actor_username: Optional[str] = None
+    actor_role: Optional[str] = None
+
+    class Config:
+        from_attributes = True

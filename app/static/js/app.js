@@ -1,12 +1,17 @@
 // SFDR Compliance Workspace Core State Management
 const State = {
-    currentView: 'dashboard', // dashboard, matrix, reviewer, settings
+    currentView: 'dashboard', // dashboard, matrix, reviewer, settings, audit
     projects: [],
     products: [],
+    users: [],
+    currentUser: null,
     selectedProjectId: null,
     selectedProject: null,
     matrixItems: [],
     selectedMatrixItem: null,
+    matrixFilter: 'all',
+    matrixSearchQuery: '',
+    editorTab: 'narrative', // narrative, json
     settings: {
         groq_api_key_configured: false,
         default_model: 'llama3-70b-8192'
@@ -31,6 +36,8 @@ const API = {
 
     getProjects() { return this.fetch('/api/projects'); },
     getProducts() { return this.fetch('/api/products'); },
+    getUsers() { return this.fetch('/api/users'); },
+    getAuditLogs(projectId) { return this.fetch(`/api/projects/${projectId}/audit-logs`); },
     createProject(data) {
         return this.fetch('/api/projects', {
             method: 'POST',
@@ -53,8 +60,16 @@ const API = {
             body: JSON.stringify(data)
         });
     },
-    approveAnswer(answerId) { return this.fetch(`/api/answers/${answerId}/approve`, { method: 'POST' }); },
-    rejectAnswer(answerId) { return this.fetch(`/api/answers/${answerId}/reject`, { method: 'POST' }); },
+    approveAnswer(answerId, reviewerId) {
+        let url = `/api/answers/${answerId}/approve`;
+        if (reviewerId) url += `?reviewer_id=${reviewerId}`;
+        return this.fetch(url, { method: 'POST' });
+    },
+    rejectAnswer(answerId, reviewerId) {
+        let url = `/api/answers/${answerId}/reject`;
+        if (reviewerId) url += `?reviewer_id=${reviewerId}`;
+        return this.fetch(url, { method: 'POST' });
+    },
     
     getSettings() { return this.fetch('/api/settings'); },
     saveSettings(data) {
@@ -92,6 +107,50 @@ function setView(viewName) {
         renderMatrix();
     } else if (viewName === 'settings') {
         renderSettings();
+    } else if (viewName === 'audit' && State.selectedProjectId) {
+        renderAuditTrail();
+    }
+}
+
+// User / Role switcher init
+async function initUsers() {
+    try {
+        State.users = await API.getUsers();
+        const select = document.getElementById('user-role-select');
+        if (select) {
+            select.innerHTML = '';
+            State.users.forEach(u => {
+                select.innerHTML += `<option value="${u.id}">${u.username} (${u.role})</option>`;
+            });
+            if (State.users.length > 0) {
+                State.currentUser = State.users[0];
+                updateAvatar(State.currentUser.username);
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load users:", e);
+    }
+}
+
+function switchUserRole() {
+    const select = document.getElementById('user-role-select');
+    const userId = select.value;
+    State.currentUser = State.users.find(u => u.id === userId);
+    if (State.currentUser) {
+        updateAvatar(State.currentUser.username);
+        // Re-render context views
+        if (State.currentView === 'matrix') {
+            renderMatrix();
+        } else if (State.currentView === 'reviewer' && State.selectedMatrixItem) {
+            openReviewer(State.selectedMatrixItem.field_id);
+        }
+    }
+}
+
+function updateAvatar(username) {
+    const avatar = document.getElementById('active-user-avatar');
+    if (avatar && username) {
+        avatar.innerText = username.charAt(0).toUpperCase();
     }
 }
 
@@ -176,8 +235,9 @@ async function selectProject(projectId) {
     State.selectedProjectId = projectId;
     State.selectedProject = State.projects.find(p => p.id === projectId);
     
-    // Enable matrix navigation tab
+    // Enable matrix and audit navigation tabs
     document.getElementById('nav-matrix').style.display = 'flex';
+    document.getElementById('nav-audit').style.display = 'flex';
     setView('matrix');
 }
 
@@ -207,48 +267,152 @@ async function renderMatrix() {
             });
         }
 
-        // Render matrix rows
-        const tbody = document.getElementById('matrix-table-body');
-        tbody.innerHTML = '';
+        // Calculate and render overall matrix progress
+        const totalFields = State.matrixItems.length;
+        const approvedFields = State.matrixItems.filter(m => m.answer_status === 'Approved').length;
+        const matrixProgress = totalFields > 0 ? Math.round((approvedFields / totalFields) * 100) : 0;
+        
+        document.getElementById('matrix-progress-text').innerText = `Approved ${approvedFields} of ${totalFields} disclosure requirements`;
+        document.getElementById('matrix-progress-percentage').innerText = `${matrixProgress}%`;
+        document.getElementById('matrix-progress-bar').style.width = `${matrixProgress}%`;
 
-        State.matrixItems.forEach(item => {
-            let statusBadge = 'badge-missing';
-            if (item.answer_status === 'Approved') statusBadge = 'badge-approved';
-            else if (item.answer_status === 'Draft') statusBadge = 'badge-draft';
-            else if (item.answer_status === 'Rejected') statusBadge = 'badge-rejected';
+        // Render matrix rows using active filters
+        renderMatrixTable();
 
-            // Extract value visualization
-            let displayVal = 'N/A';
-            if (item.extracted_value) {
-                if (typeof item.extracted_value === 'object' && item.extracted_value.value !== undefined) {
-                    displayVal = `${item.extracted_value.value} ${item.extracted_value.unit || ''}`;
-                } else if (Array.isArray(item.extracted_value)) {
-                    displayVal = `${item.extracted_value.length} items`;
-                } else {
-                    displayVal = item.extracted_value;
-                }
-            }
-
-            // Validation indicators
-            let valIndicators = '<span style="color:var(--accent-emerald); font-weight:bold;">Passed</span>';
-            if (!item.validation_passed) {
-                valIndicators = item.validation_errors.map(err => `<div class="warning-pill">${err}</div>`).join('');
-            }
-
-            tbody.innerHTML += `
-            <tr onclick="openReviewer('${item.field_id}')" style="cursor:pointer;">
-                <td style="font-weight:600; color:#fff;">${item.field_label}</td>
-                <td><code>${item.field_code}</code></td>
-                <td>${item.annex_code || 'Annex I'}</td>
-                <td><span class="badge ${statusBadge}">${item.answer_status}</span></td>
-                <td><strong style="color:var(--accent-cyan);">${displayVal}</strong></td>
-                <td style="max-width:200px;">${valIndicators}</td>
-            </tr>`;
-        });
+        // Render Automated Validation Console
+        renderComplianceConsole();
 
     } finally {
         showLoader(false);
     }
+}
+
+function renderMatrixTable() {
+    const tbody = document.getElementById('matrix-table-body');
+    tbody.innerHTML = '';
+
+    State.matrixItems.forEach(item => {
+        // Apply status filter
+        if (State.matrixFilter !== 'all' && item.answer_status !== State.matrixFilter) return;
+
+        // Apply search query
+        if (State.matrixSearchQuery) {
+            const query = State.matrixSearchQuery;
+            const matchLabel = item.field_label.toLowerCase().includes(query);
+            const matchCode = item.field_code.toLowerCase().includes(query);
+            const matchAnnex = (item.annex_code || '').toLowerCase().includes(query);
+            if (!matchLabel && !matchCode && !matchAnnex) return;
+        }
+
+        let statusBadge = 'badge-missing';
+        if (item.answer_status === 'Approved') statusBadge = 'badge-approved';
+        else if (item.answer_status === 'Draft') statusBadge = 'badge-draft';
+        else if (item.answer_status === 'Rejected') statusBadge = 'badge-rejected';
+
+        // Extract value visualization
+        let displayVal = 'N/A';
+        if (item.extracted_value) {
+            if (typeof item.extracted_value === 'object' && item.extracted_value.value !== undefined) {
+                displayVal = `${item.extracted_value.value} ${item.extracted_value.unit || ''}`;
+            } else if (Array.isArray(item.extracted_value)) {
+                displayVal = `${item.extracted_value.length} items`;
+            } else {
+                displayVal = item.extracted_value;
+            }
+        }
+
+        // Validation indicators
+        let valIndicators = '<span style="color:var(--accent-emerald); font-weight:bold;">Passed</span>';
+        if (!item.validation_passed) {
+            valIndicators = item.validation_errors.map(err => `<div class="warning-pill">${err}</div>`).join('');
+        }
+
+        // High contrast mandatory indicator
+        const mandatoryTag = item.mandatory 
+            ? `<span style="color:var(--accent-coral); font-weight:bold; font-size:1.1rem; vertical-align:middle; margin-left:4px;" title="Mandatory Field">*</span>` 
+            : '';
+
+        tbody.innerHTML += `
+        <tr onclick="openReviewer('${item.field_id}')" style="cursor:pointer;">
+            <td style="font-weight:600; color:#fff;">${item.field_label}${mandatoryTag}</td>
+            <td><code>${item.field_code}</code></td>
+            <td>${item.annex_code || 'Annex I'}</td>
+            <td><span class="badge ${statusBadge}">${item.answer_status}</span></td>
+            <td><strong style="color:var(--accent-cyan);">${displayVal}</strong></td>
+            <td style="max-width:200px;">${valIndicators}</td>
+        </tr>`;
+    });
+}
+
+function filterMatrix() {
+    const searchInput = document.getElementById('matrix-search');
+    State.matrixSearchQuery = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    renderMatrixTable();
+}
+
+function setMatrixFilter(btn) {
+    document.querySelectorAll('.filter-btn').forEach(el => el.classList.remove('active'));
+    btn.classList.add('active');
+    State.matrixFilter = btn.dataset.filter;
+    renderMatrixTable();
+}
+
+function renderComplianceConsole() {
+    const issuesContainer = document.getElementById('compliance-console-issues');
+    const flagCountBadge = document.getElementById('console-flag-count');
+    if (!issuesContainer) return;
+
+    issuesContainer.innerHTML = '';
+    let totalFlags = 0;
+
+    // Gather failing matrix items
+    const failingItems = State.matrixItems.filter(item => !item.validation_passed);
+    
+    if (failingItems.length === 0) {
+        issuesContainer.innerHTML = `
+        <div style="padding: 20px; text-align: center; color: var(--accent-emerald); font-weight: 500; font-size: 0.9rem;">
+            ✔ 100% Compliant. No active warnings or validation errors flagged by the rules engine.
+        </div>`;
+        flagCountBadge.innerText = '0 Flags';
+        flagCountBadge.className = 'badge badge-approved';
+        return;
+    }
+
+    failingItems.forEach(item => {
+        item.validation_errors.forEach(err => {
+            totalFlags++;
+            let severity = 'warning';
+            let sevBadge = 'Warning';
+            let badgeClass = 'badge-draft';
+            
+            if (err.toLowerCase().includes('missing') || err.toLowerCase().includes('outside allowed') || err.toLowerCase().includes('invalid')) {
+                severity = 'error';
+                sevBadge = 'Error';
+                badgeClass = 'badge-missing';
+            } else if (err.toLowerCase().includes('too short') || err.toLowerCase().includes('brief')) {
+                severity = 'info';
+                sevBadge = 'Info';
+                badgeClass = 'badge-approved';
+            }
+
+            issuesContainer.innerHTML += `
+            <div class="compliance-issue-card ${severity}">
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="badge ${badgeClass}">${sevBadge}</span>
+                        <strong style="color:#fff; font-size:0.9rem;">${item.field_label} (<code>${item.field_code}</code>)</strong>
+                    </div>
+                    <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:2px;">${err}</p>
+                </div>
+                <button class="btn btn-secondary" style="padding:6px 12px; font-size:0.75rem;" onclick="openReviewer('${item.field_id}')">
+                    Audit Field
+                </button>
+            </div>`;
+        });
+    });
+
+    flagCountBadge.innerText = `${totalFlags} Flags`;
+    flagCountBadge.className = 'badge badge-rejected';
 }
 
 // Open Side-by-Side Reviewer Workspace
@@ -306,6 +470,184 @@ function openReviewer(fieldId) {
         quoteBox.innerHTML = '<p style="color:var(--text-muted); font-style:italic;">No supporting audit citation could be located by the hybrid retrieval engine.</p>';
         sourceMeta.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem;">Run AI Extraction to scan documents.</p>';
     }
+
+    // Default to Narrative Editor tab
+    switchEditorTab('narrative');
+    
+    // Render the structured JSON tab content
+    renderStructuredJSONEditor();
+}
+
+function switchEditorTab(tabName) {
+    State.editorTab = tabName;
+    document.querySelectorAll('.editor-tab').forEach(el => {
+        el.classList.toggle('active', el.id === `tab-${tabName}-btn`);
+    });
+    document.querySelectorAll('.editor-pane').forEach(el => {
+        el.classList.toggle('active', el.id === `pane-${tabName}`);
+    });
+}
+
+function renderStructuredJSONEditor() {
+    const container = document.getElementById('json-editor-container');
+    if (!container || !State.selectedMatrixItem) return;
+
+    container.innerHTML = '';
+    const item = State.selectedMatrixItem;
+
+    if (item.field_kind === 'numeric') {
+        // Numeric field - Value and Unit inputs
+        let val = '';
+        let unit = item.expected_unit || '';
+        
+        if (item.extracted_value && typeof item.extracted_value === 'object') {
+            val = item.extracted_value.value ?? '';
+            unit = item.extracted_value.unit ?? unit;
+        } else if (item.extracted_value !== undefined) {
+            val = item.extracted_value;
+        }
+
+        container.innerHTML = `
+        <div class="json-field-row">
+            <div class="form-group" style="flex: 2;">
+                <label for="json-val-input">Extracted Numeric Value</label>
+                <input type="number" step="any" id="json-val-input" class="form-input" value="${val}">
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label for="json-unit-input">Reporting Unit</label>
+                <input type="text" id="json-unit-input" class="form-input" value="${unit}">
+            </div>
+        </div>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">Expected unit for this field: <strong>${item.expected_unit || 'N/A'}</strong>.</p>
+        `;
+    } else if (item.field_kind === 'table') {
+        // Table fields (like periodic holdings) - Interactive rows grid
+        let holdings = [];
+        if (item.extracted_value && Array.isArray(item.extracted_value)) {
+            holdings = item.extracted_value;
+        } else if (item.answer_json && Array.isArray(item.answer_json.holdings)) {
+            holdings = item.answer_json.holdings;
+        }
+
+        container.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Holdings Grid (max 15)</span>
+            <button class="btn btn-secondary" style="padding:4px 8px; font-size:0.75rem;" onclick="addHoldingRow()">+ Add Row</button>
+        </div>
+        <div style="overflow-x:auto;">
+            <table class="json-grid-table">
+                <thead>
+                    <tr>
+                        <th>Asset Name</th>
+                        <th>Weight</th>
+                        <th>Sector</th>
+                        <th>Country</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="json-holdings-tbody">
+                    <!-- Rendered dynamically -->
+                </tbody>
+            </table>
+        </div>
+        `;
+        const tbody = document.getElementById('json-holdings-tbody');
+        if (holdings.length === 0) {
+            holdings.push({name: '', weight: '', sector: '', country: ''});
+        }
+        holdings.forEach(h => appendHoldingRowMarkup(tbody, h));
+    } else {
+        // Narrative / Fallback - Raw JSON editor
+        const rawData = item.answer_json || item.extracted_value || {};
+        container.innerHTML = `
+        <textarea id="json-raw-textarea" class="editor-box" style="font-family: monospace; font-size: 0.85rem; min-height: 250px;">${JSON.stringify(rawData, null, 2)}</textarea>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">Conforms to general metadata schemas.</p>
+        `;
+    }
+}
+
+function appendHoldingRowMarkup(tbody, h) {
+    const tr = document.createElement('tr');
+    tr.className = 'json-holding-row';
+    tr.innerHTML = `
+    <td><input type="text" class="json-grid-input holding-name" value="${h.name || ''}" placeholder="e.g. Vestas"></td>
+    <td><input type="text" class="json-grid-input holding-weight" value="${h.weight || ''}" placeholder="e.g. 4.2%"></td>
+    <td><input type="text" class="json-grid-input holding-sector" value="${h.sector || ''}" placeholder="e.g. Wind Energy"></td>
+    <td><input type="text" class="json-grid-input holding-country" value="${h.country || ''}" placeholder="e.g. Denmark"></td>
+    <td>
+        <button class="btn btn-secondary" style="padding:4px; min-width:24px; color:var(--accent-coral); border:none;" onclick="this.closest('tr').remove()">✕</button>
+    </td>
+    `;
+    tbody.appendChild(tr);
+}
+
+function addHoldingRow() {
+    const tbody = document.getElementById('json-holdings-tbody');
+    if (tbody) {
+        appendHoldingRowMarkup(tbody, {name:'', weight:'', sector:'', country:''});
+    }
+}
+
+// Render Audit Trail View
+async function renderAuditTrail() {
+    if (!State.selectedProjectId) return;
+    
+    showLoader(true);
+    document.getElementById('audit-project-title').innerText = `${State.selectedProject.name} - Audit Trail`;
+    
+    try {
+        const logs = await API.getAuditLogs(State.selectedProjectId);
+        const container = document.getElementById('audit-timeline-container');
+        container.innerHTML = '';
+        
+        if (logs.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-secondary); text-align:center; padding:40px;">No compliance activities recorded for this project yet.</div>';
+            return;
+        }
+
+        logs.forEach(log => {
+            const dateStr = new Date(log.created_at).toLocaleString();
+            let icon = '✦';
+            let actionClass = 'create';
+            
+            if (log.action === 'upload') { icon = '📥'; actionClass = 'upload'; }
+            else if (log.action === 'approve') { icon = '✓'; actionClass = 'approve'; }
+            else if (log.action === 'reject') { icon = '✕'; actionClass = 'reject'; }
+            else if (log.action === 'manual_edit') { icon = '✏️'; actionClass = 'modify'; }
+            else if (log.action === 'process_ai') { icon = '🤖'; actionClass = 'modify'; }
+            else if (log.action === 'validate') { icon = '🛡️'; actionClass = 'modify'; }
+            
+            const actorDisplay = log.actor_username ? `${log.actor_username} (${log.actor_role})` : 'System Processes';
+            let actionText = `${log.action.replace('_', ' ').toUpperCase()}`;
+            if (log.action === 'manual_edit') actionText = 'Manual Revision Saved';
+
+            let payloadStr = '';
+            if (log.payload && Object.keys(log.payload).length > 0) {
+                payloadStr = `
+                <details style="margin-top:8px; cursor:pointer;">
+                    <summary style="font-size:0.75rem; color:var(--accent-indigo); font-weight:600;">View Activity Payload</summary>
+                    <pre class="timeline-payload">${JSON.stringify(log.payload, null, 2)}</pre>
+                </details>`;
+            }
+
+            container.innerHTML += `
+            <div class="timeline-item ${actionClass} fade-in">
+                <div class="timeline-marker">${icon}</div>
+                <div class="timeline-content">
+                    <div class="timeline-header">
+                        <span class="timeline-actor">${actorDisplay}</span>
+                        <span>${dateStr}</span>
+                    </div>
+                    <div class="timeline-action-text">
+                        <strong>${actionText}</strong>: Mapped to ${log.entity_type} (ID: <code>${log.entity_id.substring(0, 8)}...</code>)
+                      </div>
+                      ${payloadStr}
+                  </div>
+              </div>`;
+        });
+    } finally {
+        showLoader(false);
+    }
 }
 
 // --- Action Handlers ---
@@ -315,11 +657,50 @@ async function saveReviewerDraft() {
     if (!State.selectedMatrixItem) return;
     
     const text = document.getElementById('rev-editor-text').value;
+    
+    // Parse the structured JSON editor state
+    let answer_json = null;
+    const kind = State.selectedMatrixItem.field_kind;
+    
+    if (kind === 'numeric') {
+        const valEl = document.getElementById('json-val-input');
+        const unitEl = document.getElementById('json-unit-input');
+        if (valEl) {
+            const numVal = valEl.value.trim() !== '' ? parseFloat(valEl.value) : null;
+            answer_json = { value: numVal, unit: unitEl ? unitEl.value : '' };
+        }
+    } else if (kind === 'table') {
+        const rows = document.querySelectorAll('.json-holding-row');
+        const holdings = [];
+        rows.forEach(row => {
+            const name = row.querySelector('.holding-name').value.trim();
+            const weight = row.querySelector('.holding-weight').value.trim();
+            const sector = row.querySelector('.holding-sector').value.trim();
+            const country = row.querySelector('.holding-country').value.trim();
+            if (name || weight) {
+                holdings.push({ name, weight, sector, country });
+            }
+        });
+        answer_json = { holdings, count: holdings.length };
+    } else {
+        const rawEl = document.getElementById('json-raw-textarea');
+        if (rawEl) {
+            try {
+                answer_json = JSON.parse(rawEl.value);
+            } catch (e) {
+                alert("Invalid JSON format. Please correct it before saving.");
+                return;
+            }
+        }
+    }
+
     showLoader(true);
     try {
         await API.updateAnswer(State.selectedMatrixItem.answer_id, {
             answer_text: text,
-            status: 'Draft'
+            answer_json: answer_json,
+            status: 'Draft',
+            approved_by_user_id: State.currentUser ? State.currentUser.id : null
         });
         
         // Refresh local matrix and re-populate current field
@@ -336,7 +717,10 @@ async function approveReviewerDraft() {
     
     showLoader(true);
     try {
-        await API.approveAnswer(State.selectedMatrixItem.answer_id);
+        await API.approveAnswer(
+            State.selectedMatrixItem.answer_id, 
+            State.currentUser ? State.currentUser.id : null
+        );
         await renderMatrix();
         openReviewer(State.selectedMatrixItem.field_id);
     } finally {
@@ -350,7 +734,10 @@ async function rejectReviewerDraft() {
     
     showLoader(true);
     try {
-        await API.rejectAnswer(State.selectedMatrixItem.answer_id);
+        await API.rejectAnswer(
+            State.selectedMatrixItem.answer_id, 
+            State.currentUser ? State.currentUser.id : null
+        );
         await renderMatrix();
         openReviewer(State.selectedMatrixItem.field_id);
     } finally {
@@ -402,6 +789,7 @@ async function deleteProject(event, projectId) {
             State.selectedProject = null;
             document.getElementById('nav-matrix').style.display = 'none';
             document.getElementById('nav-reviewer').style.display = 'none';
+            document.getElementById('nav-audit').style.display = 'none';
         }
         renderDashboard();
     } finally {
@@ -409,37 +797,83 @@ async function deleteProject(event, projectId) {
     }
 }
 
-// Document Upload Flow
-async function triggerDocUpload() {
+// Document Upload Flow (Handles multiple files drop & select)
+async function triggerDocUpload(filesToUpload = null) {
     const fileInput = document.getElementById('doc-file-input');
     const sourceSelect = document.getElementById('doc-source-type');
     
-    if (fileInput.files.length === 0) {
-        alert("Please choose a file to upload.");
+    const files = filesToUpload || fileInput.files;
+    if (!files || files.length === 0) {
+        alert("Please choose one or more files to upload.");
         return;
     }
 
-    const file = fileInput.files[0];
     const source_type = sourceSelect.value;
     
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('source_type', source_type);
+    // Show upload progress section
+    const progressContainer = document.getElementById('upload-progress-container');
+    progressContainer.style.display = 'flex';
+    progressContainer.innerHTML = '';
+
+    // Create progress row for each file
+    const fileList = Array.from(files);
+    fileList.forEach((file, index) => {
+        progressContainer.innerHTML += `
+        <div class="upload-progress-row" id="upload-row-${index}">
+            <span style="font-weight:500;">${file.name}</span>
+            <span class="badge badge-draft" id="upload-status-${index}">Uploading...</span>
+        </div>`;
+    });
 
     showLoader(true);
+    
     try {
-        const res = await fetch(`/api/projects/${State.selectedProjectId}/documents`, {
+        const formData = new FormData();
+        for (const file of fileList) {
+            formData.append('files', file);
+        }
+        formData.append('source_type', source_type);
+
+        const res = await fetch(`/api/projects/${State.selectedProjectId}/documents/batch`, {
             method: 'POST',
             body: formData
         });
+
+        if (!res.ok) throw new Error("Batch upload request failed.");
+        const uploadResults = await res.json();
         
-        if (!res.ok) throw new Error("Upload failed.");
+        // Update statuses based on batch response
+        fileList.forEach((file, index) => {
+            const match = uploadResults.find(r => r.file_name === file.name);
+            const statusBadge = document.getElementById(`upload-status-${index}`);
+            if (statusBadge) {
+                if (match && match.status === 'Completed') {
+                    statusBadge.innerText = 'Completed ✔';
+                    statusBadge.className = 'badge badge-approved';
+                } else {
+                    statusBadge.innerText = 'Failed ✖';
+                    statusBadge.className = 'badge badge-rejected';
+                }
+            }
+        });
         
         fileInput.value = ''; // clear input
         await renderMatrix(); // reload matrix & documents list
-        alert("Document ingested, parsed, and chunked successfully!");
+        
+        // Hide progress section after 3 seconds
+        setTimeout(() => {
+            progressContainer.style.display = 'none';
+        }, 3000);
+        
     } catch (e) {
-        alert(`Failed to upload: ${e.message}`);
+        alert(`Failed to upload batch: ${e.message}`);
+        fileList.forEach((file, index) => {
+            const statusBadge = document.getElementById(`upload-status-${index}`);
+            if (statusBadge) {
+                statusBadge.innerText = 'Failed ✖';
+                statusBadge.className = 'badge badge-rejected';
+            }
+        });
     } finally {
         showLoader(false);
     }
@@ -473,6 +907,29 @@ async function triggerValidation() {
     } finally {
         showLoader(false);
     }
+}
+
+// Drag & drop zone initializer
+function initDragDrop() {
+    const zone = document.getElementById('drag-drop-zone');
+    if (!zone) return;
+
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+    });
+
+    zone.addEventListener('dragleave', () => {
+        zone.classList.remove('dragover');
+    });
+
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            triggerDocUpload(e.dataTransfer.files);
+        }
+    });
 }
 
 // --- Exports ---
@@ -536,10 +993,17 @@ function closeModal() {
 }
 
 // Initialize application on window load
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
+    // 1. Initial view
     setView('dashboard');
     
-    // Close modal on click overlay
+    // 2. Load seeded users
+    await initUsers();
+
+    // 3. Init drag-and-drop
+    initDragDrop();
+    
+    // 4. Close modal on click overlay
     const modal = document.getElementById('create-modal');
     modal.addEventListener('click', (e) => {
         if (e.target === modal) closeModal();

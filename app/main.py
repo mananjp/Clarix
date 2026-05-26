@@ -19,7 +19,7 @@ from app.models import (
 from app.schemas import (
     ReportingProjectCreate, ReportingProject as RPResponse,
     Product as ProductResponse, MatrixItem, FieldAnswerUpdate,
-    UserCreate, User as UserResponse
+    UserCreate, User as UserResponse, AuditLogResponse
 )
 from app.services.ingestion import IngestionService
 from app.services.retrieval import RetrievalService
@@ -280,6 +280,93 @@ async def upload_document(
     db.commit()
 
     return {"id": doc_id, "file_name": file.filename, "status": "Completed"}
+
+
+@app.post("/api/projects/{project_id}/documents/batch")
+async def upload_documents_batch(
+    project_id: str,
+    files: List[UploadFile] = File(...),
+    source_type: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Upload multiple ESG/sustainability reports, parse pages, split chunks, and save to DB."""
+    project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    uploaded_docs = []
+    for file in files:
+        doc_id = str(uuid.uuid4())
+        file_ext = file.filename.split(".")[-1].lower() if "." in file.filename else "txt"
+        storage_filename = f"{doc_id}.{file_ext}"
+        storage_path = os.path.join(UPLOAD_DIR, storage_filename)
+
+        # Save file on local disk
+        try:
+            with open(storage_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+        except Exception as e:
+            print(f"Failed to save file {file.filename}: {e}")
+            continue
+
+        # Create document record
+        db_doc = Document(
+            id=doc_id,
+            project_id=project_id,
+            file_name=file.filename,
+            file_type=file_ext,
+            source_type=source_type,
+            storage_url=storage_path,
+            parsed_status="Parsing"
+        )
+        db.add(db_doc)
+        db.commit()
+
+        # Process chunks and save
+        try:
+            pages_content = IngestionService.process_document(storage_path, file_ext)
+            chunks = IngestionService.chunk_document_data(pages_content)
+            
+            for idx, chk in enumerate(chunks):
+                import hashlib
+                text_hash = hashlib.md5(chk["chunk_text"].encode("utf-8")).hexdigest()
+
+                db_chunk = DocumentChunk(
+                    id=str(uuid.uuid4()),
+                    document_id=doc_id,
+                    page_no=chk["page_no"],
+                    section_title=chk["section_title"],
+                    chunk_text=chk["chunk_text"],
+                    metadata_json=chk["metadata"],
+                    chunk_hash=text_hash,
+                    embedding_metadata={"char_count": len(chk["chunk_text"])}
+                )
+                db.add(db_chunk)
+                
+            db_doc.parsed_status = "Completed"
+            db.commit()
+            uploaded_docs.append({"id": doc_id, "file_name": file.filename, "status": "Completed"})
+        except Exception as e:
+            db_doc.parsed_status = "Failed"
+            db.commit()
+            print(f"Error parsing document {file.filename}: {e}")
+            uploaded_docs.append({"id": doc_id, "file_name": file.filename, "status": "Failed", "error": str(e)})
+
+        # Audit log
+        audit = AuditLog(
+            id=str(uuid.uuid4()),
+            entity_type="document",
+            entity_id=doc_id,
+            action="upload",
+            actor_id="system",
+            project_id=project_id,
+            payload={"file_name": file.filename}
+        )
+        db.add(audit)
+        db.commit()
+
+    return uploaded_docs
 
 
 @app.get("/api/projects/{project_id}/documents")
@@ -575,7 +662,7 @@ def update_answer(answer_id: str, update_in: FieldAnswerUpdate, db: Session = De
         id=str(uuid.uuid4()),
         project_id=orig_answer.project_id,
         regulation_field_id=orig_answer.regulation_field_id,
-        answer_json=orig_answer.answer_json,
+        answer_json=update_in.answer_json if update_in.answer_json is not None else orig_answer.answer_json,
         answer_text=update_in.answer_text,
         status=update_in.status,
         model_name=orig_answer.model_name,
@@ -711,6 +798,36 @@ def download_html_package(project_id: str, db: Session = Depends(get_db)):
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/projects/{project_id}/audit-logs", response_model=List[AuditLogResponse])
+def get_project_audit_logs(project_id: str, db: Session = Depends(get_db)):
+    """Retrieve audit trail log entries for a specific reporting project."""
+    logs = db.query(AuditLog).filter(AuditLog.project_id == project_id).order_by(AuditLog.created_at.desc()).all()
+    
+    results = []
+    for log in logs:
+        actor_username = None
+        actor_role = None
+        if log.actor_id:
+            user = db.query(User).filter(User.id == log.actor_id).first()
+            if user:
+                actor_username = user.username
+                actor_role = user.role
+        
+        results.append(AuditLogResponse(
+            id=log.id,
+            entity_type=log.entity_type,
+            entity_id=log.entity_id,
+            action=log.action,
+            actor_id=log.actor_id,
+            project_id=log.project_id,
+            payload=log.payload,
+            created_at=log.created_at,
+            actor_username=actor_username,
+            actor_role=actor_role
+        ))
+    return results
 
 
 # --- Settings ---
