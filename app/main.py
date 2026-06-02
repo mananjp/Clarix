@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, PlainTextResponse, FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.dialects.postgresql import insert
 from typing import List, Dict, Any, Optional
 
 from app.config import UPLOAD_DIR, BASE_DIR, GROQ_API_KEY, DEFAULT_MODEL
@@ -19,8 +19,13 @@ from app.models import (
 from app.schemas import (
     ReportingProjectCreate, ReportingProject as RPResponse,
     Product as ProductResponse, MatrixItem, FieldAnswerUpdate,
-    UserCreate, User as UserResponse, AuditLogResponse
+    UserCreate, User as UserResponse, AuditLogResponse, Token
 )
+from app.auth import (
+    get_password_hash, verify_password, create_access_token, 
+    ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
+)
+from fastapi.security import OAuth2PasswordRequestForm
 from app.services.ingestion import IngestionService
 from app.services.retrieval import RetrievalService
 from app.services.generation import GenerationService
@@ -46,17 +51,11 @@ app.add_middleware(
 )
 
 
-# --- User Management Endpoints ---
+# --- Auth Endpoints ---
 
-@app.get("/api/users", response_model=List[UserResponse])
-def get_users(db: Session = Depends(get_db)):
-    """Retrieve all registered users/reviewers."""
-    return db.query(User).all()
-
-
-@app.post("/api/users", response_model=UserResponse)
-def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
-    """Register a new compliance user/reviewer."""
+@app.post("/api/auth/register", response_model=UserResponse)
+def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
+    """Register a new user."""
     existing = db.query(User).filter(
         (User.username == user_in.username) | (User.email == user_in.email)
     ).first()
@@ -64,9 +63,10 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Username or email already registered.")
 
     db_user = User(
-        id=user_in.id,
+        id=str(uuid.uuid4()),
         username=user_in.username,
         email=user_in.email,
+        hashed_password=get_password_hash(user_in.password),
         role=user_in.role,
         active=user_in.active
     )
@@ -75,9 +75,36 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     return db_user
 
+@app.post("/api/auth/token", response_model=Token)
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(User).filter(
+        (User.username == form_data.username) | (User.email == form_data.username)
+    ).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email/username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# --- User Management Endpoints ---
+
+@app.get("/api/users/me", response_model=UserResponse)
+def get_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+@app.get("/api/users", response_model=List[UserResponse])
+def get_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Retrieve all registered users/reviewers."""
+    return db.query(User).all()
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
-def get_user_by_id(user_id: str, db: Session = Depends(get_db)):
+def get_user_by_id(user_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve details of a specific user."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -88,13 +115,13 @@ def get_user_by_id(user_id: str, db: Session = Depends(get_db)):
 # --- API Endpoints ---
 
 @app.get("/api/products", response_model=List[ProductResponse])
-def get_products(db: Session = Depends(get_db)):
+def get_products(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve all seeded financial products."""
     return db.query(Product).filter(Product.active == True).all()
 
 
 @app.get("/api/projects")
-def get_projects(db: Session = Depends(get_db)):
+def get_projects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve all active reporting projects with document counts and overall completion progress."""
     projects = db.query(ReportingProject).all()
     results = []
@@ -129,7 +156,7 @@ def get_projects(db: Session = Depends(get_db)):
 
 
 @app.post("/api/projects", response_model=RPResponse)
-def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get_db)):
+def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Create a new compliance reporting project."""
     project_id = str(uuid.uuid4())
     
@@ -188,7 +215,7 @@ def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get
 
 
 @app.delete("/api/projects/{project_id}")
-def delete_project(project_id: str, db: Session = Depends(get_db)):
+def delete_project(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Delete a reporting project and all associated cascades."""
     project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
     if not project:
@@ -203,7 +230,8 @@ async def upload_document(
     project_id: str,
     file: UploadFile = File(...),
     source_type: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Upload an ESG/sustainability report, parse pages, split chunks, and save to DB."""
     project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
@@ -287,7 +315,8 @@ async def upload_documents_batch(
     project_id: str,
     files: List[UploadFile] = File(...),
     source_type: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Upload multiple ESG/sustainability reports, parse pages, split chunks, and save to DB."""
     project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
@@ -370,13 +399,13 @@ async def upload_documents_batch(
 
 
 @app.get("/api/projects/{project_id}/documents")
-def get_project_documents(project_id: str, db: Session = Depends(get_db)):
+def get_project_documents(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve all uploaded documents for a project."""
     return db.query(Document).filter(Document.project_id == project_id).all()
 
 
 @app.get("/api/projects/{project_id}/matrix", response_model=List[MatrixItem])
-def get_project_compliance_matrix(project_id: str, db: Session = Depends(get_db)):
+def get_project_compliance_matrix(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Unified compliance requirement matrix, combining regulation fields,
     answers, citations, and active validation flags.
@@ -465,7 +494,7 @@ def get_project_compliance_matrix(project_id: str, db: Session = Depends(get_db)
 
 
 @app.post("/api/projects/{project_id}/process")
-def process_rag_and_drafting(project_id: str, db: Session = Depends(get_db)):
+def process_rag_and_drafting(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Core GenAI Ingestion, Retrieval, Extraction, and Drafting runner.
     For each target field, queries local chunks via TF-IDF search, extracts
@@ -613,7 +642,7 @@ def process_rag_and_drafting(project_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/projects/{project_id}/validate")
-def run_project_validation(project_id: str, db: Session = Depends(get_db)):
+def run_project_validation(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Manually re-run validation checks over project disclosures."""
     results = ValidationService.validate_project(db, project_id)
     
@@ -634,7 +663,7 @@ def run_project_validation(project_id: str, db: Session = Depends(get_db)):
 
 
 @app.put("/api/answers/{answer_id}")
-def update_answer(answer_id: str, update_in: FieldAnswerUpdate, db: Session = Depends(get_db)):
+def update_answer(answer_id: str, update_in: FieldAnswerUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Allows reviewers to manually override and edit a generated disclosure draft, creating a new version."""
     orig_answer = db.query(FieldAnswer).filter(FieldAnswer.id == answer_id).first()
     if not orig_answer:
@@ -696,7 +725,7 @@ def update_answer(answer_id: str, update_in: FieldAnswerUpdate, db: Session = De
 
 
 @app.post("/api/answers/{answer_id}/approve")
-def approve_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, db: Session = Depends(get_db)):
+def approve_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Approve a draft disclosure field, flagging it as compliance-ready."""
     answer = db.query(FieldAnswer).filter(FieldAnswer.id == answer_id).first()
     if not answer:
@@ -744,7 +773,7 @@ def approve_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None,
 
 
 @app.post("/api/answers/{answer_id}/reject")
-def reject_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, db: Session = Depends(get_db)):
+def reject_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Reject a draft disclosure field, pushing it back to draft status."""
     answer = db.query(FieldAnswer).filter(FieldAnswer.id == answer_id).first()
     if not answer:
@@ -777,7 +806,7 @@ def reject_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, 
 # --- Exports ---
 
 @app.get("/api/projects/{project_id}/export/markdown")
-def download_markdown_package(project_id: str, db: Session = Depends(get_db)):
+def download_markdown_package(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Download an audit-ready Markdown disclosure package."""
     try:
         report = ExportService.generate_markdown_report(db, project_id)
@@ -789,7 +818,7 @@ def download_markdown_package(project_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/projects/{project_id}/export/html")
-def download_html_package(project_id: str, db: Session = Depends(get_db)):
+def download_html_package(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Download a stunningly designed printable HTML audit disclosure package."""
     try:
         report = ExportService.generate_html_report(db, project_id)
