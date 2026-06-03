@@ -1,48 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, CheckCircle, XCircle, AlertTriangle, Edit3, MessageSquare, ExternalLink } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, AlertTriangle, Edit3, MessageSquare, ExternalLink, Loader } from 'lucide-react';
 import { motion } from 'framer-motion';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useProjects } from '../context/ProjectContext';
 
 const ReviewerDesk = () => {
   const { currentUser } = useAuth();
-  const [projects, setProjects] = useState([]);
+  const { projects, isLoadingProjects } = useProjects();
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const selectedProject = projects.find(p => p.id === selectedProjectId);
   const [matrixItems, setMatrixItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isMatrixLoading, setIsMatrixLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [draftText, setDraftText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await client.get('/projects');
-        setProjects(res.data);
-        if (res.data.length > 0) {
-          setSelectedProjectId(res.data[0].id);
-        }
-      } catch (err) {
-        console.error("Failed to fetch projects", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProjects();
-  }, []);
+  // No auto-select, wait for user selection
 
   useEffect(() => {
     if (!selectedProjectId) return;
     const fetchMatrix = async () => {
+      setIsMatrixLoading(true);
       try {
         const res = await client.get(`/projects/${selectedProjectId}/matrix`);
         setMatrixItems(res.data);
         if (res.data.length > 0) {
           setSelectedItem(res.data[0]);
           setDraftText(res.data[0].answer_text || '');
+        } else {
+          setSelectedItem(null);
+          setDraftText('');
         }
       } catch (err) {
         console.error("Failed to fetch matrix", err);
+      } finally {
+        setIsMatrixLoading(false);
       }
     };
     fetchMatrix();
@@ -96,7 +89,14 @@ const ReviewerDesk = () => {
     }
   };
 
-  if (loading) return <div className="p-8 text-slate-500 font-medium">Loading Reviewer Desk...</div>;
+  if (isLoadingProjects) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+        <div className="text-slate-500 font-bold">Loading Reviewer Desk...</div>
+      </div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-6 h-full min-h-[calc(100vh-8rem)]">
@@ -107,13 +107,20 @@ const ReviewerDesk = () => {
           <h1 className="text-xl font-bold text-slate-900">Reviewer Desk</h1>
           <p className="text-sm font-medium text-slate-500">Review, edit, and approve AI-generated compliance disclosures.</p>
         </div>
-        <div>
+        <div className="flex items-center gap-3">
+          {selectedProject?.status === 'Validating' && (
+            <span className="badge badge-warning flex items-center gap-1.5 animate-pulse text-xs py-1 px-2.5">
+              <Loader size={12} className="animate-spin" />
+              Validating
+            </span>
+          )}
           {projects.length > 0 && (
             <select 
               className="form-input bg-white/50 text-sm font-bold text-slate-700"
               value={selectedProjectId}
               onChange={(e) => setSelectedProjectId(e.target.value)}
             >
+              <option value="" disabled>Select a Project...</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -129,12 +136,24 @@ const ReviewerDesk = () => {
         <div className="w-full lg:w-1/3 flex flex-col gap-4">
           <div className="glass-card flex-1 flex flex-col overflow-hidden max-h-[800px]">
             <div className="p-4 border-b border-slate-100 bg-white/40">
-              <h3 className="font-bold text-slate-800">Pending Reviews</h3>
+              <h3 className="font-bold text-slate-800 flex items-center justify-between">
+                Pending Reviews
+                <span className="bg-primary-100 text-primary-700 py-0.5 px-2.5 rounded-full text-xs font-black">
+                  {matrixItems.filter(i => i.answer_status !== 'Approved').length}
+                </span>
+              </h3>
             </div>
             
             <div className="overflow-y-auto flex-1 p-2 space-y-2">
-              {matrixItems.length === 0 ? (
-                <div className="p-4 text-center text-sm text-slate-500">No disclosures found.</div>
+              {isMatrixLoading ? (
+                <div className="flex flex-col items-center justify-center h-40 gap-3">
+                  <div className="w-8 h-8 border-4 border-slate-200 border-t-primary-600 rounded-full animate-spin"></div>
+                  <span className="text-slate-500 font-bold text-sm">Loading reviews...</span>
+                </div>
+              ) : !selectedProjectId ? (
+                <div className="p-4 text-center text-sm text-slate-500 font-medium">Please select a project above.</div>
+              ) : matrixItems.length === 0 ? (
+                <div className="p-4 text-center text-sm text-slate-500 font-medium">No disclosures found.</div>
               ) : matrixItems.map(item => (
                 <div 
                   key={item.field_id}

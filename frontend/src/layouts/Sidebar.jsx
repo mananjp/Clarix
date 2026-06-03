@@ -4,7 +4,7 @@ import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAle
 import { useAuth } from '../context/AuthContext';
 
 const Sidebar = ({ isOpen, onClose }) => {
-  const { logout } = useAuth();
+  const { logout, currentUser } = useAuth();
   
   return (
     <>
@@ -63,8 +63,8 @@ const Sidebar = ({ isOpen, onClose }) => {
 
         <div className="p-4 border-t border-slate-100 bg-slate-50/50 m-4 rounded-xl border flex flex-col gap-3">
           <div>
-            <div className="text-xs font-semibold text-slate-800">Admin Workspace</div>
-            <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider">Premium Edition</div>
+            <div className="text-xs font-semibold text-slate-800">{currentUser?.username ? `Welcome, ${currentUser.username}` : 'Admin Workspace'}</div>
+            <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider">{currentUser?.role || 'Premium Edition'}</div>
           </div>
           <button 
             onClick={logout}

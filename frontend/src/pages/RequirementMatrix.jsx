@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { UploadCloud, Search, Download, Play, Filter, Loader } from 'lucide-react';
 import { motion } from 'framer-motion';
 import client from '../api/client';
+import { useProjects } from '../context/ProjectContext';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -14,42 +15,29 @@ const rowVariants = {
 };
 
 const RequirementMatrix = () => {
-  const [projects, setProjects] = useState([]);
+  const { projects, isLoadingProjects, fetchProjects } = useProjects();
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [matrixItems, setMatrixItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isMatrixLoading, setIsMatrixLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   
   const fileInputRef = useRef(null);
 
-  // Fetch projects on mount
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await client.get('/projects');
-        setProjects(res.data);
-        if (res.data.length > 0) {
-          setSelectedProjectId(res.data[0].id);
-        }
-      } catch (err) {
-        console.error("Failed to fetch projects", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProjects();
-  }, []);
+  // No auto-select, wait for user selection
 
   // Fetch matrix when selected project changes
   useEffect(() => {
     if (!selectedProjectId) return;
     const fetchMatrix = async () => {
+      setIsMatrixLoading(true);
       try {
         const res = await client.get(`/projects/${selectedProjectId}/matrix`);
         setMatrixItems(res.data);
       } catch (err) {
         console.error("Failed to fetch matrix", err);
+      } finally {
+        setIsMatrixLoading(false);
       }
     };
     fetchMatrix();
@@ -68,6 +56,7 @@ const RequirementMatrix = () => {
       await client.post(`/projects/${selectedProjectId}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
+      await fetchProjects(); // refresh global state
       alert('Document uploaded and parsed successfully!');
     } catch (err) {
       console.error("Upload failed", err);
@@ -86,6 +75,7 @@ const RequirementMatrix = () => {
       // Refetch matrix after processing
       const res = await client.get(`/projects/${selectedProjectId}/matrix`);
       setMatrixItems(res.data);
+      await fetchProjects(); // update project status globally
       alert('GenAI Extraction & Drafting Complete!');
     } catch (err) {
       console.error("GenAI processing failed", err);
@@ -97,8 +87,13 @@ const RequirementMatrix = () => {
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
 
-  if (loading) {
-    return <div className="p-8 text-slate-500 font-medium">Loading workspace data...</div>;
+  if (isLoadingProjects) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+        <div className="text-slate-500 font-bold">Loading workspace data...</div>
+      </div>
+    );
   }
 
   return (
@@ -106,13 +101,22 @@ const RequirementMatrix = () => {
       {/* Top Bar */}
       <div className="glass-card p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <span className="text-xs font-black text-primary-600 uppercase tracking-wider">Active Workspace</span>
+          <div className="flex items-center gap-3 mb-1">
+            <span className="text-xs font-black text-primary-600 uppercase tracking-wider">Active Workspace</span>
+            {selectedProject?.status === 'Validating' && (
+              <span className="badge badge-warning flex items-center gap-1.5 animate-pulse text-[10px] py-0.5 px-2">
+                <Loader size={10} className="animate-spin" />
+                Validating
+              </span>
+            )}
+          </div>
           {projects.length > 0 ? (
             <select 
               className="mt-1 block w-full bg-transparent text-2xl font-bold text-slate-800 border-none outline-none focus:ring-0 cursor-pointer"
               value={selectedProjectId}
               onChange={(e) => setSelectedProjectId(e.target.value)}
             >
+              <option value="" disabled>Select a Project...</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id} className="text-sm">{p.name}</option>
               ))}
@@ -156,9 +160,15 @@ const RequirementMatrix = () => {
         />
 
         <motion.div 
-          whileHover={{ borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.05)' }}
-          onClick={() => fileInputRef.current?.click()}
-          className="flex flex-col items-center justify-center p-10 border-2 border-dashed border-slate-200 rounded-xl transition-colors cursor-pointer bg-slate-50/50" 
+          whileHover={selectedProjectId ? { borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.05)' } : {}}
+          onClick={() => {
+            if (!selectedProjectId) {
+              alert("Please select a project from the Active Workspace dropdown first.");
+              return;
+            }
+            fileInputRef.current?.click();
+          }}
+          className={`flex flex-col items-center justify-center p-10 border-2 border-dashed border-slate-200 rounded-xl transition-colors bg-slate-50/50 ${selectedProjectId ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`} 
         >
           {isUploading ? (
             <div className="flex flex-col items-center">
@@ -184,7 +194,12 @@ const RequirementMatrix = () => {
       {/* Matrix Table */}
       <div className="glass-card flex flex-col overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/40">
-          <h3 className="font-bold text-lg text-slate-800">2. SFDR Compliance Matrix</h3>
+          <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+            2. SFDR Compliance Matrix
+            <span className="bg-primary-100 text-primary-700 py-0.5 px-2.5 rounded-full text-xs font-black">
+              {matrixItems.length}
+            </span>
+          </h3>
           
           <div className="flex items-center gap-3 w-full md:w-auto">
             <div className="relative flex-1 md:w-64">
@@ -207,7 +222,18 @@ const RequirementMatrix = () => {
               </tr>
             </thead>
             <motion.tbody variants={containerVariants} initial="hidden" animate="show" className="divide-y divide-slate-100">
-              {matrixItems.length === 0 ? (
+              {isMatrixLoading ? (
+                <tr>
+                  <td colSpan="5" className="p-12">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <div className="w-8 h-8 border-4 border-slate-200 border-t-primary-600 rounded-full animate-spin"></div>
+                      <span className="text-slate-500 font-bold text-sm">Fetching matrix records...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : !selectedProjectId ? (
+                <tr><td colSpan="5" className="p-8 text-center text-slate-500 font-medium">Please select a project from the Active Workspace dropdown.</td></tr>
+              ) : matrixItems.length === 0 ? (
                 <tr><td colSpan="5" className="p-8 text-center text-slate-500 font-medium">No matrix data available.</td></tr>
               ) : matrixItems.map(item => (
                 <motion.tr variants={rowVariants} key={item.field_id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer">

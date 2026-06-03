@@ -636,6 +636,10 @@ def process_rag_and_drafting(project_id: str, db: Session = Depends(get_db), cur
         payload={"model": DEFAULT_MODEL}
     )
     db.add(audit)
+    
+    # Update project status to Completed after successful extraction and validation
+    project.status = ProjectStatus.COMPLETED.value
+    
     db.commit()
 
     return {"message": "GenAI compliance workflow complete. All fields extracted, drafted, and validated."}
