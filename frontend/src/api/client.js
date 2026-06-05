@@ -1,8 +1,7 @@
-import axios from 'react'; // wait, import axios from 'axios';
 import axiosInstance from 'axios';
 
 const client = axiosInstance.create({
-  baseURL: 'http://127.0.0.1:8000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api',
   headers: {
     'Content-Type': 'application/json',
   },
