@@ -1,8 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert } from 'lucide-react';
+import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const Sidebar = ({ isOpen, onClose }) => {
+  const { logout, currentUser } = useAuth();
+  
   return (
     <>
       {/* Mobile Overlay */}
@@ -58,9 +61,18 @@ const Sidebar = ({ isOpen, onClose }) => {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 m-4 rounded-xl border">
-          <div className="text-xs font-semibold text-slate-800">Admin Workspace</div>
-          <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider">Premium Edition</div>
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50 m-4 rounded-xl border flex flex-col gap-3">
+          <div>
+            <div className="text-xs font-semibold text-slate-800">{currentUser?.username ? `Welcome, ${currentUser.username}` : 'Admin Workspace'}</div>
+            <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider">{currentUser?.role || 'Premium Edition'}</div>
+          </div>
+          <button 
+            onClick={logout}
+            className="flex items-center justify-center gap-2 w-full py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors"
+          >
+            <LogOut size={16} />
+            <span>Sign Out</span>
+          </button>
         </div>
       </aside>
     </>

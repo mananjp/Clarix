@@ -1,6 +1,7 @@
 import uuid
 from app.database import Base, engine, SessionLocal
 from app.models import RegulationField, Organization, Product, User, UserRole
+from app.auth import get_password_hash
 
 # Seed data for standard SFDR fields
 SFDR_FIELDS = [
@@ -205,6 +206,7 @@ def seed_database():
     try:
         # 1. Seed users representing distinct governance roles
         users_to_seed = [
+            {"id": "system", "username": "System Auto-Agent", "email": "system@sfdr.ai", "role": UserRole.ADMINISTRATOR.value},
             {"id": "user_officer", "username": "officer_alice", "email": "alice@greenfield.com", "role": UserRole.COMPLIANCE_OFFICER.value},
             {"id": "user_reviewer", "username": "reviewer_bob", "email": "bob@greenfield.com", "role": UserRole.REVIEWER.value},
             {"id": "user_admin", "username": "admin_charlie", "email": "admin@greenfield.com", "role": UserRole.ADMINISTRATOR.value}
@@ -217,6 +219,7 @@ def seed_database():
                     id=u["id"],
                     username=u["username"],
                     email=u["email"],
+                    hashed_password=get_password_hash("password123"),
                     role=u["role"],
                     active=True
                 )

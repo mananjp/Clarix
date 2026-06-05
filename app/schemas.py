@@ -6,11 +6,15 @@ from datetime import datetime, date
 class UserBase(BaseModel):
     username: str
     email: str
-    role: str = "Reviewer"
-    active: bool = True
+    role: Optional[str] = "Reviewer"
+    active: Optional[bool] = True
 
 class UserCreate(UserBase):
-    id: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
 
 class User(UserBase):
     id: str
@@ -19,6 +23,13 @@ class User(UserBase):
 
     class Config:
         from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
 
 # --- Organization Schemas ---
 class OrganizationBase(BaseModel):
