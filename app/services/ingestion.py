@@ -131,3 +131,64 @@ class IngestionService:
                 })
                 
         return chunks
+
+    @staticmethod
+    def compute_file_hash(file_bytes: bytes) -> str:
+        import hashlib
+        return hashlib.sha256(file_bytes).hexdigest()
+
+    @staticmethod
+    def verify_document_integrity(document_id: str, db) -> dict:
+        import hashlib
+        from app.models import Document
+        from app.config import UPLOAD_DIR
+        import os
+
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            return {
+                "document_id": document_id,
+                "stored_hash": None,
+                "current_hash": "",
+                "integrity_status": "TAMPERED",
+                "hashed_at": None
+            }
+
+        # Try to locate the file
+        file_path = doc.storage_url
+        if not file_path or not os.path.exists(file_path):
+            alt_path = os.path.join(UPLOAD_DIR, f"{doc.id}.{doc.file_type}")
+            if os.path.exists(alt_path):
+                file_path = alt_path
+
+        if not file_path or not os.path.exists(file_path):
+            return {
+                "document_id": document_id,
+                "stored_hash": doc.file_hash,
+                "current_hash": "",
+                "integrity_status": "TAMPERED",
+                "hashed_at": doc.hashed_at
+            }
+
+        try:
+            with open(file_path, "rb") as f:
+                current_bytes = f.read()
+            current_hash = hashlib.sha256(current_bytes).hexdigest()
+            is_intact = current_hash == doc.file_hash
+            return {
+                "document_id": document_id,
+                "stored_hash": doc.file_hash,
+                "current_hash": current_hash,
+                "integrity_status": "INTACT" if is_intact else "TAMPERED",
+                "hashed_at": doc.hashed_at
+            }
+        except Exception as e:
+            print(f"Error checking integrity for document {document_id}: {e}")
+            return {
+                "document_id": document_id,
+                "stored_hash": doc.file_hash,
+                "current_hash": "",
+                "integrity_status": "TAMPERED",
+                "hashed_at": doc.hashed_at
+            }
+

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert, LogOut, Package, Scale } from 'lucide-react';
+import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert, LogOut, Package, Scale, ShieldCheck, LineChart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -28,13 +28,15 @@ const Sidebar = ({ isOpen, onClose }) => {
             <X size={20} />
           </button>
         </div>
-
+ 
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {[
             { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
             { to: '/matrix', icon: Table, label: 'Requirement Matrix' },
             { to: '/reviewer', icon: ClipboardCheck, label: 'Reviewer Desk' },
             { to: '/regulatory-impact', icon: Scale, label: 'Regulatory Impact Simulator' },
+            { to: '/auditor', icon: ShieldCheck, label: 'Auditor Portal' },
+            { to: '/trends', icon: LineChart, label: 'Predictive Trends' },
             { to: '/audit', icon: History, label: 'Audit Trail' },
             { to: '/exports', icon: Package, label: 'Export Package' },
             { to: '/settings', icon: Settings, label: 'Settings' }

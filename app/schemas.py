@@ -274,6 +274,29 @@ class WhatIfScenarioResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class ScenarioParseRequest(BaseModel):
+    free_text_context: str
+    framework: Optional[str] = "SFDR"
+    action: Optional[str] = None
+    field_code: Optional[str] = None
+    current_value: Optional[str] = None
+    proposed_value: Optional[str] = None
+    jurisdiction: Optional[str] = "EU / General"
+    reporting_period: Optional[str] = "2026"
+
+
+class ScenarioParseResponse(BaseModel):
+    action: str
+    field_code: Optional[str] = None
+    field_label: Optional[str] = None
+    proposed_value: Optional[str] = None
+    framework: str
+    jurisdiction: str
+    reporting_period: str
+    confidence: float
+
+
 # --- Legal Summary Schema ---
 class LegalRiskSummary(BaseModel):
     total_fields: int
@@ -302,3 +325,78 @@ class AuditLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AuditorLedgerResponse(BaseModel):
+    id: str
+    project_id: str
+    regulation_field_id: str
+    field_answer_id: Optional[str] = None
+    evidence_id: Optional[str] = None
+    document_id: Optional[str] = None
+    document_hash: Optional[str] = None
+    source_passage: Optional[str] = None
+    source_page: Optional[int] = None
+    extraction_model: Optional[str] = None
+    extraction_timestamp: Optional[datetime] = None
+    approved_by_user_id: Optional[str] = None
+    approval_timestamp: Optional[datetime] = None
+    final_value: Optional[str] = None
+    integrity_verified: bool
+    ledger_created_at: datetime
+    field_code: Optional[str] = None
+    field_label: Optional[str] = None
+    document_name: Optional[str] = None
+    approver_username: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentIntegrityResponse(BaseModel):
+    document_id: str
+    stored_hash: Optional[str] = None
+    current_hash: str
+    integrity_status: str  # "INTACT" | "TAMPERED"
+    hashed_at: Optional[datetime] = None
+
+
+class MetricSnapshotResponse(BaseModel):
+    id: str
+    organization_id: str
+    regulation_field_id: str
+    reporting_year: int
+    value_numeric: Optional[float] = None
+    value_unit: Optional[str] = None
+    intensity_denominator: Optional[float] = None
+    intensity_value: Optional[float] = None
+    source_project_id: str
+    snapshot_created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ScenarioInterventionRequest(BaseModel):
+    field_code: str
+    effect_type: str  # "relative_reduction" | "absolute_reduction"
+    effect_magnitude: float
+    applicable_from_year: int
+
+
+class TrendForecastResponse(BaseModel):
+    status: str
+    target_year: Optional[int] = None
+    forecast_value: Optional[float] = None
+    lower_bound_80pct: Optional[float] = None
+    upper_bound_80pct: Optional[float] = None
+    trend_direction: Optional[str] = None
+    yoy_change_pct: Optional[float] = None
+    data_points_used: Optional[int] = None
+    model: Optional[str] = None
+    min_years_required: Optional[int] = None
+    scenario_name: Optional[str] = None
+    scenario_forecast_value: Optional[float] = None
+    estimated_reduction: Optional[float] = None
+    intervention_description: Optional[str] = None
+

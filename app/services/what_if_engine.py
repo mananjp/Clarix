@@ -516,3 +516,150 @@ class WhatIfEngine:
             "legal_consequences": legal_consequences,
             "risk_score": risk_score
         }
+
+    @classmethod
+    def parse_scenario(cls, db: Session, project_id: str,
+                       params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Parses a natural language scenario context using Groq LLM if available,
+        falling back to keyword heuristics.
+        """
+        free_text = (params.get("free_text_context") or "").strip()
+        client = GenerationService.get_groq_client()
+        
+        if client and free_text:
+            try:
+                system_prompt = (
+                    "You are an expert regulatory compliance AI assistant specializing in ESG regulations.\n"
+                    "Analyze the user's natural language request (and any partially filled inputs) and extract/parse them into structured parameters.\n"
+                    "Extract the following fields:\n"
+                    "- action: One of 'disclosure_omission' | 'threshold_change' | 'reclassify_article' | 'estimation_methodology_change' | 'delayed_filing' | 'data_collection_change' | 'control_failure'\n"
+                    "- field_code: The regulatory field code (e.g. 'PAI_GHG_SCOPE3', 'PAI_BOARD_GENDER_DIVERSITY') or null if not applicable.\n"
+                    "- field_label: A human-readable label of the target field or null.\n"
+                    "- proposed_value: A summary of the proposed method or reclassification (e.g. 'Spend-based vendor average', 'Exclude from report', 'Article 6 reclassification') or null.\n"
+                    "- framework: The regulatory framework, typically 'SFDR' or 'CSRD'. Default to 'SFDR'.\n"
+                    "- jurisdiction: The jurisdiction (e.g. 'EU / General', 'Germany'). Default to 'EU / General'.\n"
+                    "- reporting_period: The specific period (e.g. 'Q2 2026', '2026'). Default to '2026'.\n"
+                    "- confidence: Float score of your extraction confidence between 0.0 and 1.0.\n\n"
+                    "Output ONLY a valid JSON object matching this schema. Do not write markdown tags, comments, or extra text."
+                )
+                
+                user_content = (
+                    f"User natural language context: \"{free_text}\"\n"
+                    f"Provided parameters:\n"
+                    f"- Action: {params.get('action') or 'Not specified'}\n"
+                    f"- Framework: {params.get('framework') or 'SFDR'}\n"
+                    f"- Metric/Field Code: {params.get('field_code') or 'Not specified'}\n"
+                    f"- Current Value: {params.get('current_value') or 'Not specified'}\n"
+                    f"- Proposed Value: {params.get('proposed_value') or 'Not specified'}\n"
+                    f"- Jurisdiction: {params.get('jurisdiction') or 'EU / General'}\n"
+                    f"- Period: {params.get('reporting_period') or '2026'}\n"
+                )
+
+                response = client.chat.completions.create(
+                    model=DEFAULT_MODEL,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    temperature=0.0,
+                    response_format={"type": "json_object"}
+                )
+                
+                result_json = json.loads(response.choices[0].message.content)
+                if "action" in result_json:
+                    return result_json
+            except Exception as e:
+                print(f"Error in LLM scenario parsing: {e}. Falling back to rules heuristics.")
+
+        # Keyword Heuristics Parser Fallback
+        text = free_text.lower()
+        
+        # Defaults
+        action = params.get("action") or "disclosure_omission"
+        field_code = params.get("field_code") or ""
+        field_label = ""
+        proposed_value = params.get("proposed_value") or "Exclude from reporting"
+        framework = params.get("framework") or "SFDR"
+        jurisdiction = params.get("jurisdiction") or "EU / General"
+        reporting_period = params.get("reporting_period") or "2026"
+        confidence = 0.70
+
+        # Action Detection Heuristics
+        if any(w in text for w in ["average", "estimate", "proxy", "extrapolat"]):
+            action = "estimation_methodology_change"
+            proposed_value = "Spend-based vendor average"
+        elif any(w in text for w in ["reclass", "article 6", "article 8", "article 9"]):
+            action = "reclassify_article"
+            proposed_value = "Fund Reclassification"
+        elif any(w in text for w in ["delay", "late", "extend", "postpone"]):
+            action = "delayed_filing"
+            proposed_value = "Delayed filing submission"
+        elif any(w in text for w in ["collect", "gather", "survey", "request"]):
+            action = "data_collection_change"
+            proposed_value = "Updated data collection methodology"
+        elif any(w in text for w in ["control", "governance", "oversight", "failure"]):
+            action = "control_failure"
+            proposed_value = "Governance control gap"
+        elif any(w in text for w in ["threshold", "breach", "limit", "bound", "violate"]):
+            action = "threshold_change"
+            proposed_value = "Breach of safety threshold"
+        elif any(w in text for w in ["omit", "remove", "exclude", "drop", "skip"]):
+            action = "disclosure_omission"
+            proposed_value = "Exclude from reporting"
+
+        # Field Code Heuristics
+        if "scope 3" in text or "scope3" in text:
+            field_code = "PAI_GHG_SCOPE3"
+            field_label = "Scope 3 GHG Emissions"
+        elif "scope 1" in text or "scope1" in text:
+            field_code = "PAI_GHG_SCOPE1"
+            field_label = "Scope 1 GHG Emissions"
+        elif "scope 2" in text or "scope2" in text:
+            field_code = "PAI_GHG_SCOPE2"
+            field_label = "Scope 2 GHG Emissions"
+        elif any(w in text for w in ["gender", "diversity", "board", "women", "female"]):
+            field_code = "PAI_BOARD_GENDER_DIVERSITY"
+            field_label = "Board Gender Diversity"
+        elif any(w in text for w in ["water", "effluent", "waste"]):
+            field_code = "PAI_WATER_EMISSIONS"
+            field_label = "Water Emissions"
+        elif any(w in text for w in ["fossil", "coal", "gas", "oil"]):
+            field_code = "PAI_FOSSIL_FUEL_COMPANIES"
+            field_label = "Fossil Fuel Exposure"
+
+        # Proposed value adjustments
+        if action == "estimation_methodology_change" and field_code == "PAI_GHG_SCOPE3":
+            proposed_value = "Spend-based vendor average"
+        elif action == "reclassify_article":
+            if "article 8 to article 6" in text or "art 8 to art 6" in text:
+                proposed_value = "Article 8 -> Article 6"
+            elif "article 9 to article 8" in text or "art 9 to art 8" in text:
+                proposed_value = "Article 9 -> Article 8"
+
+        # Period Heuristics
+        if "q1" in text:
+            reporting_period = "Q1 2026"
+        elif "q2" in text:
+            reporting_period = "Q2 2026"
+        elif "q3" in text:
+            reporting_period = "Q3 2026"
+        elif "q4" in text:
+            reporting_period = "Q4 2026"
+
+        # Field label lookup in case we matched field_code but not label
+        if field_code and not field_label:
+            field_rec = db.query(RegulationField).filter(RegulationField.field_code == field_code).first()
+            if field_rec:
+                field_label = field_rec.field_label
+
+        return {
+            "action": action,
+            "field_code": field_code or None,
+            "field_label": field_label or None,
+            "proposed_value": proposed_value,
+            "framework": framework,
+            "jurisdiction": jurisdiction,
+            "reporting_period": reporting_period,
+            "confidence": confidence
+        }

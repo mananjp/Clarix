@@ -15,14 +15,17 @@ from app.database import get_db, Base, engine
 from app.models import (
     Organization, Product, ReportingProject, Document, DocumentChunk,
     RegulationField, FieldEvidence, FieldAnswer, ValidationResult, AuditLog, User,
-    WhatIfScenario, ProjectStatus, AnswerStatus
+    WhatIfScenario, ProjectStatus, AnswerStatus, AuditorLedgerEntry, MetricSnapshot
 )
 from app.schemas import (
     ReportingProjectCreate, ReportingProject as RPResponse,
     Product as ProductResponse, MatrixItem, FieldAnswerUpdate,
     UserCreate, User as UserResponse, AuditLogResponse, Token,
     RegulationField as RegFieldResponse, LegalConsequenceDetail,
-    WhatIfScenarioCreate, WhatIfScenarioResponse, LegalRiskSummary
+    WhatIfScenarioCreate, WhatIfScenarioResponse, LegalRiskSummary,
+    ScenarioParseRequest, ScenarioParseResponse, AuditorLedgerResponse,
+    DocumentIntegrityResponse, MetricSnapshotResponse, TrendForecastResponse,
+    ScenarioInterventionRequest
 )
 from app.auth import (
     get_password_hash, verify_password, create_access_token, 
@@ -256,12 +259,14 @@ async def upload_document(
 
     doc_id = str(uuid.uuid4())
     file_ext = file.filename.split(".")[-1].lower() if "." in file.filename else "txt"
-    # Save file to a temporary file
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as tmp:
-            content = await file.read()
-            tmp.write(content)
-            storage_path = tmp.name
+        content = await file.read()
+        import hashlib
+        file_hash = hashlib.sha256(content).hexdigest()
+        
+        storage_path = os.path.join(UPLOAD_DIR, f"{doc_id}.{file_ext}")
+        with open(storage_path, "wb") as f:
+            f.write(content)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
 
@@ -272,8 +277,11 @@ async def upload_document(
         file_name=file.filename,
         file_type=file_ext,
         source_type=source_type,
-        storage_url=f"temp://{file.filename}",
-        parsed_status="Parsing"
+        storage_url=storage_path,
+        parsed_status="Parsing",
+        file_hash=file_hash,
+        hash_algorithm="sha256",
+        hashed_at=datetime.datetime.utcnow()
     )
     db.add(db_doc)
     db.commit()
@@ -285,7 +293,6 @@ async def upload_document(
         
         for idx, chk in enumerate(chunks):
             # Generate chunk hash for deduplication
-            import hashlib
             text_hash = hashlib.md5(chk["chunk_text"].encode("utf-8")).hexdigest()
 
             db_chunk = DocumentChunk(
@@ -307,12 +314,6 @@ async def upload_document(
         db.commit()
         print(f"Error parsing document: {e}")
         raise HTTPException(status_code=500, detail=f"Parsing error: {e}")
-    finally:
-        if 'storage_path' in locals() and os.path.exists(storage_path):
-            try:
-                os.remove(storage_path)
-            except Exception as e:
-                print(f"Error deleting temporary file: {e}")
 
     # Audit log
     audit = AuditLog(
@@ -348,12 +349,14 @@ async def upload_documents_batch(
         doc_id = str(uuid.uuid4())
         file_ext = file.filename.split(".")[-1].lower() if "." in file.filename else "txt"
 
-        # Save file to a temporary file
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as tmp:
-                content = await file.read()
-                tmp.write(content)
-                storage_path = tmp.name
+            content = await file.read()
+            import hashlib
+            file_hash = hashlib.sha256(content).hexdigest()
+            
+            storage_path = os.path.join(UPLOAD_DIR, f"{doc_id}.{file_ext}")
+            with open(storage_path, "wb") as f:
+                f.write(content)
         except Exception as e:
             print(f"Failed to save file {file.filename}: {e}")
             continue
@@ -365,8 +368,11 @@ async def upload_documents_batch(
             file_name=file.filename,
             file_type=file_ext,
             source_type=source_type,
-            storage_url=f"temp://{file.filename}",
-            parsed_status="Parsing"
+            storage_url=storage_path,
+            parsed_status="Parsing",
+            file_hash=file_hash,
+            hash_algorithm="sha256",
+            hashed_at=datetime.datetime.utcnow()
         )
         db.add(db_doc)
         db.commit()
@@ -377,7 +383,6 @@ async def upload_documents_batch(
             chunks = IngestionService.chunk_document_data(pages_content)
             
             for idx, chk in enumerate(chunks):
-                import hashlib
                 text_hash = hashlib.md5(chk["chunk_text"].encode("utf-8")).hexdigest()
 
                 db_chunk = DocumentChunk(
@@ -400,12 +405,6 @@ async def upload_documents_batch(
             db.commit()
             print(f"Error parsing document {file.filename}: {e}")
             uploaded_docs.append({"id": doc_id, "file_name": file.filename, "status": "Failed", "error": str(e)})
-        finally:
-            if 'storage_path' in locals() and os.path.exists(storage_path):
-                try:
-                    os.remove(storage_path)
-                except Exception as e:
-                    print(f"Error deleting temporary file: {e}")
 
         # Audit log
         audit = AuditLog(
@@ -804,6 +803,55 @@ def approve_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None,
     answer.approved_by = reviewer_id
     db.commit()
 
+    # Create Auditor Ledger Entry
+    try:
+        evidence = db.query(FieldEvidence).filter(
+            FieldEvidence.regulation_field_id == answer.regulation_field_id,
+            FieldEvidence.project_id == answer.project_id
+        ).first()
+
+        doc_hash = None
+        doc_id = None
+        source_passage = None
+        source_page = None
+        if evidence:
+            source_passage = evidence.source_locator.get("quote") if evidence.source_locator else None
+            source_page = evidence.source_locator.get("page") if evidence.source_locator else None
+            
+            if evidence.document_chunk_id:
+                chunk = db.query(DocumentChunk).filter(DocumentChunk.id == evidence.document_chunk_id).first()
+                if chunk:
+                    doc_id = chunk.document_id
+                    doc = db.query(Document).filter(Document.id == chunk.document_id).first()
+                    if doc:
+                        doc_hash = doc.file_hash
+
+        # Remove duplicate ledger entries for the same answer
+        db.query(AuditorLedgerEntry).filter(AuditorLedgerEntry.field_answer_id == answer.id).delete()
+
+        ledger_entry = AuditorLedgerEntry(
+            id=str(uuid.uuid4()),
+            project_id=answer.project_id,
+            regulation_field_id=answer.regulation_field_id,
+            field_answer_id=answer.id,
+            evidence_id=evidence.id if evidence else None,
+            document_id=doc_id,
+            document_hash=doc_hash,
+            source_passage=source_passage,
+            source_page=source_page,
+            extraction_model=answer.model_name or "system",
+            extraction_timestamp=answer.generated_at,
+            approved_by_user_id=reviewer_id or current_user.id,
+            approval_timestamp=datetime.datetime.utcnow(),
+            final_value=answer.answer_text,
+            integrity_verified=True,
+            ledger_created_at=datetime.datetime.utcnow()
+        )
+        db.add(ledger_entry)
+        db.commit()
+    except Exception as e:
+        print(f"Error creating auditor ledger entry: {e}")
+
     # If all latest fields in project are approved, mark project as completed
     project_id = answer.project_id
     total_fields = db.query(FieldAnswer).filter(
@@ -827,7 +875,7 @@ def approve_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None,
         entity_type="answer",
         entity_id=answer_id,
         action="approve",
-        actor_id=reviewer_id or "system",
+        actor_id=reviewer_id or current_user.id,
         project_id=project_id
     )
     db.add(audit)
@@ -918,6 +966,22 @@ def get_field_cross_references(field_id: str, db: Session = Depends(get_db)):
 def get_what_if_templates():
     """Return pre-built what-if scenario templates."""
     return WhatIfEngine.get_templates()
+
+
+@app.post("/api/projects/{project_id}/what-if/parse", response_model=ScenarioParseResponse)
+def parse_what_if_scenario(project_id: str, parse_in: ScenarioParseRequest,
+                           db: Session = Depends(get_db)):
+    """Parse a natural language or hybrid context scenario input."""
+    project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    result = WhatIfEngine.parse_scenario(
+        db=db,
+        project_id=project_id,
+        params=parse_in.model_dump()
+    )
+    return result
 
 
 @app.post("/api/projects/{project_id}/what-if", response_model=WhatIfScenarioResponse)
@@ -1111,6 +1175,398 @@ def save_settings(payload: Dict[str, str]):
         os.environ["GROQ_API_KEY"] = key
         return {"message": "API key configured successfully."}
     return {"message": "Empty key ignored."}
+
+
+# --- Auditor & Trend Analytics Endpoints ---
+
+@app.get("/api/projects/{project_id}/auditor-ledger", response_model=List[AuditorLedgerResponse])
+def get_project_auditor_ledger(
+    project_id: str,
+    field_code: Optional[str] = None,
+    framework: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    query = db.query(AuditorLedgerEntry).filter(AuditorLedgerEntry.project_id == project_id)
+    
+    if field_code:
+        query = query.join(RegulationField).filter(RegulationField.field_code == field_code)
+    elif framework:
+        query = query.join(RegulationField).filter(RegulationField.framework == framework)
+        
+    entries = query.all()
+    results = []
+    for entry in entries:
+        field_code_val = entry.regulation_field.field_code if entry.regulation_field else None
+        field_label_val = entry.regulation_field.field_label if entry.regulation_field else None
+        doc_name_val = entry.document.file_name if entry.document else None
+        approver_name_val = entry.approved_by.username if entry.approved_by else None
+        
+        results.append(AuditorLedgerResponse(
+            id=entry.id,
+            project_id=entry.project_id,
+            regulation_field_id=entry.regulation_field_id,
+            field_answer_id=entry.field_answer_id,
+            evidence_id=entry.evidence_id,
+            document_id=entry.document_id,
+            document_hash=entry.document_hash,
+            source_passage=entry.source_passage,
+            source_page=entry.source_page,
+            extraction_model=entry.extraction_model,
+            extraction_timestamp=entry.extraction_timestamp,
+            approved_by_user_id=entry.approved_by_user_id,
+            approval_timestamp=entry.approval_timestamp,
+            final_value=entry.final_value,
+            integrity_verified=entry.integrity_verified,
+            ledger_created_at=entry.ledger_created_at,
+            field_code=field_code_val,
+            field_label=field_label_val,
+            document_name=doc_name_val,
+            approver_username=approver_name_val
+        ))
+    return results
+
+
+@app.get("/api/projects/{project_id}/auditor-ledger/{field_id}", response_model=AuditorLedgerResponse)
+def get_auditor_ledger_field_entry(
+    project_id: str,
+    field_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    entry = db.query(AuditorLedgerEntry).filter(
+        AuditorLedgerEntry.project_id == project_id,
+        AuditorLedgerEntry.regulation_field_id == field_id
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Auditor ledger entry not found for this field.")
+    
+    field_code_val = entry.regulation_field.field_code if entry.regulation_field else None
+    field_label_val = entry.regulation_field.field_label if entry.regulation_field else None
+    doc_name_val = entry.document.file_name if entry.document else None
+    approver_name_val = entry.approved_by.username if entry.approved_by else None
+    
+    return AuditorLedgerResponse(
+        id=entry.id,
+        project_id=entry.project_id,
+        regulation_field_id=entry.regulation_field_id,
+        field_answer_id=entry.field_answer_id,
+        evidence_id=entry.evidence_id,
+        document_id=entry.document_id,
+        document_hash=entry.document_hash,
+        source_passage=entry.source_passage,
+        source_page=entry.source_page,
+        extraction_model=entry.extraction_model,
+        extraction_timestamp=entry.extraction_timestamp,
+        approved_by_user_id=entry.approved_by_user_id,
+        approval_timestamp=entry.approval_timestamp,
+        final_value=entry.final_value,
+        integrity_verified=entry.integrity_verified,
+        ledger_created_at=entry.ledger_created_at,
+        field_code=field_code_val,
+        field_label=field_label_val,
+        document_name=doc_name_val,
+        approver_username=approver_name_val
+    )
+
+
+@app.get("/api/documents/{document_id}/integrity", response_model=DocumentIntegrityResponse)
+def check_document_integrity(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        result = IngestionService.verify_document_integrity(document_id, db)
+        return DocumentIntegrityResponse(
+            document_id=result["document_id"],
+            stored_hash=result["stored_hash"],
+            current_hash=result["current_hash"],
+            integrity_status=result["integrity_status"],
+            hashed_at=result["hashed_at"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/projects/{project_id}/audit-export")
+def generate_audit_export_package(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    try:
+        import io
+        import zipfile
+        import csv
+        import json
+        
+        # Create a temp zip file
+        temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        zip_path = temp_zip.name
+        temp_zip.close()
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # 1. Final reports
+            try:
+                markdown_report = ExportService.generate_markdown_report(db, project_id)
+                zip_file.writestr("Final_Report.md", markdown_report)
+            except Exception as e:
+                zip_file.writestr("Final_Report.md", f"Error generating report: {e}")
+
+            try:
+                html_report = ExportService.generate_html_report(db, project_id)
+                zip_file.writestr("Final_Report.html", html_report)
+            except Exception as e:
+                zip_file.writestr("Final_Report.html", f"Error generating report: {e}")
+
+            # 2. Add source documents
+            documents = db.query(Document).filter(Document.project_id == project_id).all()
+            integrity_report = {}
+            for doc in documents:
+                file_path = doc.storage_url
+                if file_path and os.path.exists(file_path):
+                    zip_file.write(file_path, arcname=f"sources/{doc.file_name}")
+                
+                integrity_info = IngestionService.verify_document_integrity(doc.id, db)
+                integrity_report[doc.id] = {
+                    "file_name": doc.file_name,
+                    "stored_hash": integrity_info.get("stored_hash"),
+                    "current_hash": integrity_info.get("current_hash"),
+                    "status": integrity_info.get("integrity_status"),
+                    "hashed_at": integrity_info.get("hashed_at").isoformat() if integrity_info.get("hashed_at") else None
+                }
+
+            zip_file.writestr("integrity_report.json", json.dumps(integrity_report, indent=4))
+
+            # 3. Add evidence_mapping.csv
+            ledger_entries = db.query(AuditorLedgerEntry).filter(AuditorLedgerEntry.project_id == project_id).all()
+            
+            csv_buffer = io.StringIO()
+            writer = csv.writer(csv_buffer)
+            writer.writerow([
+                "ledger_entry_id", "field_code", "field_label", "reported_value",
+                "source_document", "source_page", "source_passage", "document_hash",
+                "approver", "approval_timestamp"
+            ])
+            for entry in ledger_entries:
+                field_code_val = entry.regulation_field.field_code if entry.regulation_field else ""
+                field_label_val = entry.regulation_field.field_label if entry.regulation_field else ""
+                doc_name_val = entry.document.file_name if entry.document else ""
+                approver_name_val = entry.approved_by.username if entry.approved_by else ""
+                
+                writer.writerow([
+                    entry.id, field_code_val, field_label_val, entry.final_value or "",
+                    doc_name_val, entry.source_page or "", entry.source_passage or "",
+                    entry.document_hash or "", approver_name_val,
+                    entry.approval_timestamp.isoformat() if entry.approval_timestamp else ""
+                ])
+            zip_file.writestr("evidence_mapping.csv", csv_buffer.getvalue())
+
+            # 4. Add audit_log.csv
+            logs = db.query(AuditLog).filter(AuditLog.project_id == project_id).all()
+            log_buffer = io.StringIO()
+            log_writer = csv.writer(log_buffer)
+            log_writer.writerow(["log_id", "entity_type", "entity_id", "action", "actor", "timestamp", "payload"])
+            for log in logs:
+                actor_username = "system"
+                if log.actor_id:
+                    user = db.query(User).filter(User.id == log.actor_id).first()
+                    if user:
+                        actor_username = user.username
+                
+                log_writer.writerow([
+                    log.id, log.entity_type, log.entity_id, log.action, actor_username,
+                    log.created_at.isoformat() if log.created_at else "",
+                    json.dumps(log.payload) if log.payload else ""
+                ])
+            zip_file.writestr("audit_log.csv", log_buffer.getvalue())
+
+        return FileResponse(
+            path=zip_path,
+            filename=f"Audit_Export_Package_{project_id}.zip",
+            media_type="application/zip"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+
+@app.post("/api/projects/{project_id}/finalize-snapshots")
+def finalize_project_snapshots(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.services.snapshot_extractor import create_snapshot_from_project
+    count = create_snapshot_from_project(project_id, db)
+    return {"message": f"Successfully finalized and extracted {count} metric snapshots."}
+
+
+@app.get("/api/organizations/{org_id}/trends/{field_code}", response_model=Dict[str, Any])
+async def get_organization_metric_trends(
+    org_id: str,
+    field_code: str,
+    horizon: int = 1,
+    target_value: Optional[float] = None,
+    target_year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    snapshots = db.query(MetricSnapshot).join(RegulationField).filter(
+        MetricSnapshot.organization_id == org_id,
+        RegulationField.field_code == field_code
+    ).order_by(MetricSnapshot.reporting_year.asc()).all()
+
+    history = []
+    years = []
+    values = []
+    last_val = 0.0
+    last_year = datetime.datetime.utcnow().year
+    unit = "units"
+    field_name = field_code
+    
+    for s in snapshots:
+        history.append({
+            "year": s.reporting_year,
+            "value": s.value_numeric,
+            "unit": s.value_unit
+        })
+        years.append(s.reporting_year)
+        values.append(s.value_numeric)
+        last_val = s.value_numeric
+        last_year = s.reporting_year
+        if s.value_unit:
+            unit = s.value_unit
+        if s.regulation_field:
+            field_name = s.regulation_field.field_label
+
+    from app.services.forecasting import forecast_metric, generate_trend_narrative
+    
+    if len(history) >= 2:
+        forecast_res = forecast_metric(years, values, horizon_years=horizon)
+        project = db.query(ReportingProject).filter(ReportingProject.organization_id == org_id).first()
+        sector = project.industry_sector if project else "General"
+        
+        narrative = await generate_trend_narrative(
+            forecast=forecast_res,
+            field_name=field_name,
+            current_value=last_val,
+            current_year=last_year,
+            unit=unit,
+            industry_sector=sector,
+            target_value=target_value,
+            target_year=target_year
+        )
+    else:
+        forecast_res = {"status": "insufficient_data", "min_years_required": 2}
+        narrative = "Insufficient historical data to calculate trends."
+
+    return {
+        "history": history,
+        "forecast": forecast_res,
+        "narrative": narrative,
+        "field_name": field_name,
+        "unit": unit
+    }
+
+
+@app.get("/api/companies/{company_id}/trends/{field_code}", response_model=Dict[str, Any])
+async def get_company_metric_trends(
+    company_id: str,
+    field_code: str,
+    horizon: int = 1,
+    target_value: Optional[float] = None,
+    target_year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return await get_organization_metric_trends(
+        org_id=company_id,
+        field_code=field_code,
+        horizon=horizon,
+        target_value=target_value,
+        target_year=target_year,
+        db=db,
+        current_user=current_user
+    )
+
+
+@app.post("/api/organizations/{org_id}/scenarios")
+def simulate_scenario_intervention(
+    org_id: str,
+    request: ScenarioInterventionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    snapshots = db.query(MetricSnapshot).join(RegulationField).filter(
+        MetricSnapshot.organization_id == org_id,
+        RegulationField.field_code == request.field_code
+    ).order_by(MetricSnapshot.reporting_year.asc()).all()
+
+    years = [s.reporting_year for s in snapshots]
+    values = [s.value_numeric for s in snapshots]
+
+    from app.services.forecasting import forecast_metric, apply_intervention
+    if len(years) < 2:
+        raise HTTPException(status_code=400, detail="Insufficient historical data (minimum 2 years required).")
+
+    last_year = max(years)
+    horizon = request.applicable_from_year - last_year
+    if horizon <= 0:
+        horizon = 1
+
+    base_forecast = forecast_metric(years, values, horizon_years=horizon)
+    scenario_forecast = apply_intervention(
+        base_forecast=base_forecast,
+        effect_type=request.effect_type,
+        effect_magnitude=request.effect_magnitude,
+        applicable_from_year=request.applicable_from_year,
+        field_code=request.field_code
+    )
+
+    return {
+        "base_forecast": base_forecast,
+        "scenario_forecast": scenario_forecast
+    }
+
+
+@app.post("/api/companies/{company_id}/scenarios")
+def simulate_company_scenario_intervention(
+    company_id: str,
+    request: ScenarioInterventionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return simulate_scenario_intervention(
+        org_id=company_id,
+        request=request,
+        db=db,
+        current_user=current_user
+    )
+
+
+@app.get("/api/companies/{company_id}/trend-narrative/{field_code}")
+async def get_company_trend_narrative(
+    company_id: str,
+    field_code: str,
+    target_value: Optional[float] = None,
+    target_year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    res = await get_organization_metric_trends(
+        org_id=company_id,
+        field_code=field_code,
+        target_value=target_value,
+        target_year=target_year,
+        db=db,
+        current_user=current_user
+    )
+    return {"narrative": res.get("narrative")}
 
 
 # --- Serve Static UI files ---
