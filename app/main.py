@@ -1,11 +1,13 @@
 import os
 import uuid
 import datetime
+import tempfile
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, PlainTextResponse, FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
 from typing import List, Dict, Any, Optional
 
 from app.config import UPLOAD_DIR, BASE_DIR, GROQ_API_KEY, DEFAULT_MODEL
@@ -18,10 +20,15 @@ from app.models import (
 from app.schemas import (
     ReportingProjectCreate, ReportingProject as RPResponse,
     Product as ProductResponse, MatrixItem, FieldAnswerUpdate,
-    UserCreate, User as UserResponse, AuditLogResponse,
+    UserCreate, User as UserResponse, AuditLogResponse, Token,
     RegulationField as RegFieldResponse, LegalConsequenceDetail,
     WhatIfScenarioCreate, WhatIfScenarioResponse, LegalRiskSummary
 )
+from app.auth import (
+    get_password_hash, verify_password, create_access_token, 
+    ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
+)
+from fastapi.security import OAuth2PasswordRequestForm
 from app.services.ingestion import IngestionService
 from app.services.retrieval import RetrievalService
 from app.services.generation import GenerationService
@@ -38,6 +45,15 @@ app = FastAPI(
     version="2.0.0"
 )
 
+@app.on_event("startup")
+def on_startup():
+    from app.seed_regulations import seed_database
+    try:
+        seed_database()
+        print("Database successfully verified/seeded on startup.")
+    except Exception as e:
+        print(f"Error seeding database on startup: {e}")
+
 # CORS middleware config
 app.add_middleware(
     CORSMiddleware,
@@ -48,17 +64,11 @@ app.add_middleware(
 )
 
 
-# --- User Management Endpoints ---
+# --- Auth Endpoints ---
 
-@app.get("/api/users", response_model=List[UserResponse])
-def get_users(db: Session = Depends(get_db)):
-    """Retrieve all registered users/reviewers."""
-    return db.query(User).all()
-
-
-@app.post("/api/users", response_model=UserResponse)
-def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
-    """Register a new compliance user/reviewer."""
+@app.post("/api/auth/register", response_model=UserResponse)
+def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
+    """Register a new user."""
     existing = db.query(User).filter(
         (User.username == user_in.username) | (User.email == user_in.email)
     ).first()
@@ -66,9 +76,10 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Username or email already registered.")
 
     db_user = User(
-        id=user_in.id,
+        id=str(uuid.uuid4()),
         username=user_in.username,
         email=user_in.email,
+        hashed_password=get_password_hash(user_in.password),
         role=user_in.role,
         active=user_in.active
     )
@@ -77,9 +88,36 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     return db_user
 
+@app.post("/api/auth/token", response_model=Token)
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(User).filter(
+        (User.username == form_data.username) | (User.email == form_data.username)
+    ).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email/username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# --- User Management Endpoints ---
+
+@app.get("/api/users/me", response_model=UserResponse)
+def get_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+@app.get("/api/users", response_model=List[UserResponse])
+def get_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Retrieve all registered users/reviewers."""
+    return db.query(User).all()
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
-def get_user_by_id(user_id: str, db: Session = Depends(get_db)):
+def get_user_by_id(user_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve details of a specific user."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -90,13 +128,13 @@ def get_user_by_id(user_id: str, db: Session = Depends(get_db)):
 # --- API Endpoints ---
 
 @app.get("/api/products", response_model=List[ProductResponse])
-def get_products(db: Session = Depends(get_db)):
+def get_products(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve all seeded financial products."""
     return db.query(Product).filter(Product.active == True).all()
 
 
 @app.get("/api/projects")
-def get_projects(db: Session = Depends(get_db)):
+def get_projects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve all active reporting projects with document counts and overall completion progress."""
     projects = db.query(ReportingProject).all()
     results = []
@@ -131,7 +169,7 @@ def get_projects(db: Session = Depends(get_db)):
 
 
 @app.post("/api/projects", response_model=RPResponse)
-def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get_db)):
+def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Create a new compliance reporting project."""
     project_id = str(uuid.uuid4())
     
@@ -193,7 +231,7 @@ def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get
 
 
 @app.delete("/api/projects/{project_id}")
-def delete_project(project_id: str, db: Session = Depends(get_db)):
+def delete_project(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Delete a reporting project and all associated cascades."""
     project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
     if not project:
@@ -208,7 +246,8 @@ async def upload_document(
     project_id: str,
     file: UploadFile = File(...),
     source_type: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Upload an ESG/sustainability report, parse pages, split chunks, and save to DB."""
     project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
@@ -217,14 +256,12 @@ async def upload_document(
 
     doc_id = str(uuid.uuid4())
     file_ext = file.filename.split(".")[-1].lower() if "." in file.filename else "txt"
-    storage_filename = f"{doc_id}.{file_ext}"
-    storage_path = os.path.join(UPLOAD_DIR, storage_filename)
-
-    # Save file on local disk
+    # Save file to a temporary file
     try:
-        with open(storage_path, "wb") as f:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as tmp:
             content = await file.read()
-            f.write(content)
+            tmp.write(content)
+            storage_path = tmp.name
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
 
@@ -235,7 +272,7 @@ async def upload_document(
         file_name=file.filename,
         file_type=file_ext,
         source_type=source_type,
-        storage_url=storage_path,
+        storage_url=f"temp://{file.filename}",
         parsed_status="Parsing"
     )
     db.add(db_doc)
@@ -270,6 +307,12 @@ async def upload_document(
         db.commit()
         print(f"Error parsing document: {e}")
         raise HTTPException(status_code=500, detail=f"Parsing error: {e}")
+    finally:
+        if 'storage_path' in locals() and os.path.exists(storage_path):
+            try:
+                os.remove(storage_path)
+            except Exception as e:
+                print(f"Error deleting temporary file: {e}")
 
     # Audit log
     audit = AuditLog(
@@ -292,7 +335,8 @@ async def upload_documents_batch(
     project_id: str,
     files: List[UploadFile] = File(...),
     source_type: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Upload multiple ESG/sustainability reports, parse pages, split chunks, and save to DB."""
     project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
@@ -303,14 +347,13 @@ async def upload_documents_batch(
     for file in files:
         doc_id = str(uuid.uuid4())
         file_ext = file.filename.split(".")[-1].lower() if "." in file.filename else "txt"
-        storage_filename = f"{doc_id}.{file_ext}"
-        storage_path = os.path.join(UPLOAD_DIR, storage_filename)
 
-        # Save file on local disk
+        # Save file to a temporary file
         try:
-            with open(storage_path, "wb") as f:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as tmp:
                 content = await file.read()
-                f.write(content)
+                tmp.write(content)
+                storage_path = tmp.name
         except Exception as e:
             print(f"Failed to save file {file.filename}: {e}")
             continue
@@ -322,7 +365,7 @@ async def upload_documents_batch(
             file_name=file.filename,
             file_type=file_ext,
             source_type=source_type,
-            storage_url=storage_path,
+            storage_url=f"temp://{file.filename}",
             parsed_status="Parsing"
         )
         db.add(db_doc)
@@ -357,6 +400,12 @@ async def upload_documents_batch(
             db.commit()
             print(f"Error parsing document {file.filename}: {e}")
             uploaded_docs.append({"id": doc_id, "file_name": file.filename, "status": "Failed", "error": str(e)})
+        finally:
+            if 'storage_path' in locals() and os.path.exists(storage_path):
+                try:
+                    os.remove(storage_path)
+                except Exception as e:
+                    print(f"Error deleting temporary file: {e}")
 
         # Audit log
         audit = AuditLog(
@@ -375,13 +424,13 @@ async def upload_documents_batch(
 
 
 @app.get("/api/projects/{project_id}/documents")
-def get_project_documents(project_id: str, db: Session = Depends(get_db)):
+def get_project_documents(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve all uploaded documents for a project."""
     return db.query(Document).filter(Document.project_id == project_id).all()
 
 
 @app.get("/api/projects/{project_id}/matrix", response_model=List[MatrixItem])
-def get_project_compliance_matrix(project_id: str, db: Session = Depends(get_db)):
+def get_project_compliance_matrix(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Unified compliance requirement matrix with legal consequence metadata,
     combining regulation fields, answers, citations, validation flags, and
@@ -498,7 +547,7 @@ def get_project_compliance_matrix(project_id: str, db: Session = Depends(get_db)
 
 
 @app.post("/api/projects/{project_id}/process")
-def process_rag_and_drafting(project_id: str, db: Session = Depends(get_db)):
+def process_rag_and_drafting(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Core GenAI Ingestion, Retrieval, Extraction, and Drafting runner.
     For each target field, queries local chunks via TF-IDF search, extracts
@@ -647,13 +696,17 @@ def process_rag_and_drafting(project_id: str, db: Session = Depends(get_db)):
         payload={"model": DEFAULT_MODEL}
     )
     db.add(audit)
+    
+    # Update project status to Completed after successful extraction and validation
+    project.status = ProjectStatus.COMPLETED.value
+    
     db.commit()
 
     return {"message": "GenAI compliance workflow complete. All fields extracted, drafted, and validated."}
 
 
 @app.post("/api/projects/{project_id}/validate")
-def run_project_validation(project_id: str, db: Session = Depends(get_db)):
+def run_project_validation(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Manually re-run validation checks over project disclosures."""
     results = ValidationService.validate_project(db, project_id)
     
@@ -674,7 +727,7 @@ def run_project_validation(project_id: str, db: Session = Depends(get_db)):
 
 
 @app.put("/api/answers/{answer_id}")
-def update_answer(answer_id: str, update_in: FieldAnswerUpdate, db: Session = Depends(get_db)):
+def update_answer(answer_id: str, update_in: FieldAnswerUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Allows reviewers to manually override and edit a generated disclosure draft, creating a new version."""
     orig_answer = db.query(FieldAnswer).filter(FieldAnswer.id == answer_id).first()
     if not orig_answer:
@@ -736,7 +789,7 @@ def update_answer(answer_id: str, update_in: FieldAnswerUpdate, db: Session = De
 
 
 @app.post("/api/answers/{answer_id}/approve")
-def approve_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, db: Session = Depends(get_db)):
+def approve_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Approve a draft disclosure field, flagging it as compliance-ready."""
     answer = db.query(FieldAnswer).filter(FieldAnswer.id == answer_id).first()
     if not answer:
@@ -784,7 +837,7 @@ def approve_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None,
 
 
 @app.post("/api/answers/{answer_id}/reject")
-def reject_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, db: Session = Depends(get_db)):
+def reject_disclosure_answer(answer_id: str, reviewer_id: Optional[str] = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Reject a draft disclosure field, pushing it back to draft status."""
     answer = db.query(FieldAnswer).filter(FieldAnswer.id == answer_id).first()
     if not answer:
@@ -984,7 +1037,7 @@ def get_project_legal_summary(project_id: str, db: Session = Depends(get_db)):
 # --- Exports ---
 
 @app.get("/api/projects/{project_id}/export/markdown")
-def download_markdown_package(project_id: str, db: Session = Depends(get_db)):
+def download_markdown_package(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Download an audit-ready Markdown disclosure package."""
     try:
         report = ExportService.generate_markdown_report(db, project_id)
@@ -996,7 +1049,7 @@ def download_markdown_package(project_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/projects/{project_id}/export/html")
-def download_html_package(project_id: str, db: Session = Depends(get_db)):
+def download_html_package(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Download a stunningly designed printable HTML audit disclosure package."""
     try:
         report = ExportService.generate_html_report(db, project_id)

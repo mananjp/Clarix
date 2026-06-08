@@ -15,6 +15,7 @@ else:
         "pool_size": 5,
         "max_overflow": 10,
         "pool_pre_ping": True,
+        "pool_recycle": 300,
     }
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args, **engine_kwargs)
@@ -28,4 +29,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
