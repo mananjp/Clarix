@@ -19,6 +19,8 @@ import Dashboard from './pages/Dashboard';
 import RequirementMatrix from './pages/RequirementMatrix';
 import ReviewerDesk from './pages/ReviewerDesk';
 import RegulatoryImpactSimulator from './pages/RegulatoryImpactSimulator';
+import AuditorPortal from './pages/AuditorPortal';
+import TrendDashboard from './pages/TrendDashboard';
 import AuditTrail from './pages/AuditTrail';
 import AuditExport from './pages/AuditExport';
 import Settings from './pages/Settings';
@@ -61,6 +63,8 @@ function App() {
               <Route path="/matrix" element={<RequirementMatrix />} />
               <Route path="/reviewer" element={<ReviewerDesk />} />
               <Route path="/regulatory-impact" element={<RegulatoryImpactSimulator />} />
+              <Route path="/auditor" element={<AuditorPortal />} />
+              <Route path="/trends" element={<TrendDashboard />} />
               <Route path="/audit" element={<AuditTrail />} />
               <Route path="/exports" element={<AuditExport />} />
               <Route path="/settings" element={<Settings />} />

@@ -96,6 +96,8 @@ class ReportingProject(Base):
     reporting_period_start = Column(Date, nullable=False)
     reporting_period_end = Column(Date, nullable=False)
     status = Column(String, default=ProjectStatus.DRAFT.value)  # Enum mapped as string
+    reporting_year = Column(Integer, nullable=True)  # e.g., 2023, 2024, 2025
+    industry_sector = Column(String, nullable=True)  # e.g., "Cement", "IT Services"
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -106,6 +108,8 @@ class ReportingProject(Base):
     field_answers = relationship("FieldAnswer", back_populates="project", cascade="all, delete-orphan")
     validation_results = relationship("ValidationResult", back_populates="project", cascade="all, delete-orphan")
     what_if_scenarios = relationship("WhatIfScenario", back_populates="project", cascade="all, delete-orphan")
+    auditor_ledger_entries = relationship("AuditorLedgerEntry", back_populates="project", cascade="all, delete-orphan")
+    metric_snapshots = relationship("MetricSnapshot", back_populates="project", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -118,6 +122,9 @@ class Document(Base):
     source_type = Column(String, nullable=False)  # "annual_report", "sustainability_report", "factsheet", "policy"
     storage_url = Column(String, nullable=False)
     parsed_status = Column(String, default="Pending")  # "Pending", "Parsing", "Completed", "Failed"
+    file_hash = Column(String(64), nullable=True)   # SHA-256 hex digest
+    hash_algorithm = Column(String(16), default="sha256")
+    hashed_at = Column(DateTime, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
@@ -288,3 +295,52 @@ class AuditLog(Base):
 
     actor = relationship("User", back_populates="audit_logs")
     project = relationship("ReportingProject")
+
+
+class AuditorLedgerEntry(Base):
+    __tablename__ = "auditor_ledger"
+
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(String, ForeignKey("reporting_projects.id", ondelete="CASCADE"), nullable=False)
+    regulation_field_id = Column(String, ForeignKey("regulation_fields.id", ondelete="CASCADE"), nullable=False)
+    field_answer_id = Column(String, ForeignKey("field_answers.id", ondelete="SET NULL"), nullable=True)
+    evidence_id = Column(String, ForeignKey("field_evidence.id", ondelete="SET NULL"), nullable=True)
+    document_id = Column(String, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    document_hash = Column(String(64), nullable=True)
+    source_passage = Column(Text, nullable=True)
+    source_page = Column(Integer, nullable=True)
+    extraction_model = Column(String(128), nullable=True)
+    extraction_timestamp = Column(DateTime, nullable=True)
+    approved_by_user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approval_timestamp = Column(DateTime, nullable=True)
+    final_value = Column(Text, nullable=True)
+    integrity_verified = Column(Boolean, default=False)
+    ledger_created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    project = relationship("ReportingProject", back_populates="auditor_ledger_entries")
+    regulation_field = relationship("RegulationField")
+    field_answer = relationship("FieldAnswer")
+    evidence = relationship("FieldEvidence")
+    document = relationship("Document")
+    approved_by = relationship("User")
+
+
+class MetricSnapshot(Base):
+    __tablename__ = "metric_snapshots"
+
+    id = Column(String, primary_key=True, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    regulation_field_id = Column(String, ForeignKey("regulation_fields.id", ondelete="CASCADE"), nullable=False)
+    reporting_year = Column(Integer, nullable=False)
+    value_numeric = Column(Float, nullable=True)
+    value_unit = Column(String(64), nullable=True)
+    intensity_denominator = Column(Float, nullable=True)  # Revenue or turnover in INR crore
+    intensity_value = Column(Float, nullable=True)
+    source_project_id = Column(String, ForeignKey("reporting_projects.id", ondelete="CASCADE"), nullable=False)
+    snapshot_created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint('organization_id', 'regulation_field_id', 'reporting_year', name='uq_org_field_year'),)
+
+    organization = relationship("Organization")
+    regulation_field = relationship("RegulationField")
+    project = relationship("ReportingProject", back_populates="metric_snapshots")
