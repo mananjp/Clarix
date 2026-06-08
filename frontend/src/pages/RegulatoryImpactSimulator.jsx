@@ -41,6 +41,10 @@ const RegulatoryImpactSimulator = () => {
     reporting_period: '2026',
     free_text_context: ''
   });
+
+  const [parsedScenario, setParsedScenario] = useState(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [showConfirmStep, setShowConfirmStep] = useState(false);
   
   const selectedProject = projects.find(p => p.id === selectedProjectId);
 
@@ -78,6 +82,68 @@ const RegulatoryImpactSimulator = () => {
       setSimResult(null);
     }
   }, [selectedProjectId]);
+
+  const actionLabels = {
+    disclosure_omission: 'Disclosure Omission (non-reporting)',
+    threshold_change: 'Metric Threshold Breach',
+    reclassify_article: 'Fund Reclassification',
+    estimation_methodology_change: 'Estimation Methodology Change',
+    delayed_filing: 'Delayed Submission / Filing',
+    data_collection_change: 'Data Collection Change',
+    control_failure: 'Governance Control Failure'
+  };
+
+  const handleParseScenario = async () => {
+    if (!selectedProjectId) return;
+    setIsParsing(true);
+    setParsedScenario(null);
+    setShowConfirmStep(false);
+    try {
+      const res = await client.post(`/projects/${selectedProjectId}/what-if/parse`, customParams);
+      setParsedScenario(res.data);
+      setShowConfirmStep(true);
+    } catch (err) {
+      console.error('Failed to parse scenario', err);
+      alert('Failed to parse scenario context. Please check inputs.');
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleConfirmAndRun = async () => {
+    if (!selectedProjectId || !parsedScenario) return;
+    const scenario = {
+      scenario_name: customParams.scenario_name || `Simulated ${actionLabels[parsedScenario.action] || 'Scenario'}`,
+      scenario_description: customParams.free_text_context || 'AI-parsed regulatory simulation scenario',
+      parameters: {
+        ...customParams,
+        action: parsedScenario.action,
+        field_code: parsedScenario.field_code || customParams.field_code,
+        proposed_value: parsedScenario.proposed_value || customParams.proposed_value,
+        framework: parsedScenario.framework || customParams.framework,
+        jurisdiction: parsedScenario.jurisdiction || customParams.jurisdiction,
+        reporting_period: parsedScenario.reporting_period || customParams.reporting_period
+      }
+    };
+    setShowConfirmStep(false);
+    setParsedScenario(null);
+    await handleRunSimulation(scenario);
+  };
+
+  const handleEditParsed = () => {
+    if (!parsedScenario) return;
+    setCustomParams({
+      ...customParams,
+      action: parsedScenario.action,
+      field_code: parsedScenario.field_code || customParams.field_code,
+      proposed_value: parsedScenario.proposed_value || customParams.proposed_value,
+      framework: parsedScenario.framework || customParams.framework,
+      jurisdiction: parsedScenario.jurisdiction || customParams.jurisdiction,
+      reporting_period: parsedScenario.reporting_period || customParams.reporting_period
+    });
+    setShowConfirmStep(false);
+    setParsedScenario(null);
+  };
 
   const handleRunSimulation = async (scenario) => {
     if (!selectedProjectId) return;
@@ -280,12 +346,7 @@ const RegulatoryImpactSimulator = () => {
                 {activeTab === 'custom' && (
                   <form onSubmit={(e) => {
                     e.preventDefault();
-                    const scenario = {
-                      scenario_name: customParams.scenario_name || 'Custom Compliance Scenario',
-                      scenario_description: customParams.free_text_context || 'User-defined operational compliance change',
-                      parameters: customParams
-                    };
-                    handleRunSimulation(scenario);
+                    handleParseScenario();
                   }} className="space-y-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Scenario Name</label>
@@ -403,14 +464,75 @@ const RegulatoryImpactSimulator = () => {
                         onChange={(e) => setCustomParams({ ...customParams, free_text_context: e.target.value })}
                       ></textarea>
                     </div>
-                    <button 
-                      type="submit" 
-                      disabled={isSimulating}
-                      className="btn btn-primary w-full justify-center shadow-lg shadow-indigo-500/20 text-xs py-2.5"
-                    >
-                      {isSimulating ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
-                      <span>{isSimulating ? 'Evaluating...' : 'Simulate Custom Scenario'}</span>
-                    </button>
+                    {showConfirmStep && parsedScenario ? (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }} 
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="p-4 bg-indigo-50/80 border border-indigo-100 rounded-xl flex flex-col gap-3.5 my-3 shadow-inner"
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <ShieldAlert className="text-indigo-600 shrink-0 mt-0.5" size={16} />
+                          <div className="flex-1">
+                            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">AI Parsed Regulatory Impact Scenario</h4>
+                            <p className="text-[10px] text-slate-500 font-medium mt-0.5">Please review the detected parameters before initiating simulation.</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 bg-white/60 p-3 rounded-lg border border-indigo-100/50 text-xs font-medium">
+                          <div className="flex justify-between items-center py-1 border-b border-indigo-100/30">
+                            <span className="text-slate-500">Detected Action:</span>
+                            <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider text-[10px]">
+                              {actionLabels[parsedScenario.action] || parsedScenario.action}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b border-indigo-100/30">
+                            <span className="text-slate-500">Target Field:</span>
+                            <span className="font-bold text-slate-700 font-mono text-right truncate max-w-[200px]" title={parsedScenario.field_label}>
+                              {parsedScenario.field_label ? `${parsedScenario.field_label} (${parsedScenario.field_code})` : parsedScenario.field_code || 'General / None'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b border-indigo-100/30">
+                            <span className="text-slate-500">Proposed Method:</span>
+                            <span className="font-bold text-slate-700 text-right">{parsedScenario.proposed_value || 'None'}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b border-indigo-100/30">
+                            <span className="text-slate-500">Framework:</span>
+                            <span className="font-bold text-slate-700 uppercase">{parsedScenario.framework}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1">
+                            <span className="text-slate-500">Period & Jurisdiction:</span>
+                            <span className="font-bold text-slate-700">{parsedScenario.reporting_period} | {parsedScenario.jurisdiction}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-1">
+                          <button 
+                            type="button"
+                            onClick={handleConfirmAndRun}
+                            disabled={isSimulating}
+                            className="flex-1 btn btn-primary text-xs py-2 justify-center shadow-md shadow-indigo-600/10"
+                          >
+                            {isSimulating ? <RefreshCw size={14} className="animate-spin" /> : 'Yes, Run Scenario'}
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={handleEditParsed}
+                            className="flex-1 btn btn-secondary text-xs py-2 justify-center bg-white border border-slate-200"
+                          >
+                            Edit Parameters
+                          </button>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <button 
+                        type="submit" 
+                        disabled={isParsing || isSimulating}
+                        className="btn btn-primary w-full justify-center shadow-lg shadow-indigo-500/20 text-xs py-2.5"
+                      >
+                        {isParsing ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
+                        <span>{isParsing ? 'Analyzing Context...' : 'Analyze & Parse Scenario'}</span>
+                      </button>
+                    )}
                   </form>
                 ) }
 

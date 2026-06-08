@@ -274,6 +274,29 @@ class WhatIfScenarioResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class ScenarioParseRequest(BaseModel):
+    free_text_context: str
+    framework: Optional[str] = "SFDR"
+    action: Optional[str] = None
+    field_code: Optional[str] = None
+    current_value: Optional[str] = None
+    proposed_value: Optional[str] = None
+    jurisdiction: Optional[str] = "EU / General"
+    reporting_period: Optional[str] = "2026"
+
+
+class ScenarioParseResponse(BaseModel):
+    action: str
+    field_code: Optional[str] = None
+    field_label: Optional[str] = None
+    proposed_value: Optional[str] = None
+    framework: str
+    jurisdiction: str
+    reporting_period: str
+    confidence: float
+
+
 # --- Legal Summary Schema ---
 class LegalRiskSummary(BaseModel):
     total_fields: int

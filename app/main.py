@@ -22,7 +22,8 @@ from app.schemas import (
     Product as ProductResponse, MatrixItem, FieldAnswerUpdate,
     UserCreate, User as UserResponse, AuditLogResponse, Token,
     RegulationField as RegFieldResponse, LegalConsequenceDetail,
-    WhatIfScenarioCreate, WhatIfScenarioResponse, LegalRiskSummary
+    WhatIfScenarioCreate, WhatIfScenarioResponse, LegalRiskSummary,
+    ScenarioParseRequest, ScenarioParseResponse
 )
 from app.auth import (
     get_password_hash, verify_password, create_access_token, 
@@ -918,6 +919,22 @@ def get_field_cross_references(field_id: str, db: Session = Depends(get_db)):
 def get_what_if_templates():
     """Return pre-built what-if scenario templates."""
     return WhatIfEngine.get_templates()
+
+
+@app.post("/api/projects/{project_id}/what-if/parse", response_model=ScenarioParseResponse)
+def parse_what_if_scenario(project_id: str, parse_in: ScenarioParseRequest,
+                           db: Session = Depends(get_db)):
+    """Parse a natural language or hybrid context scenario input."""
+    project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    result = WhatIfEngine.parse_scenario(
+        db=db,
+        project_id=project_id,
+        params=parse_in.model_dump()
+    )
+    return result
 
 
 @app.post("/api/projects/{project_id}/what-if", response_model=WhatIfScenarioResponse)
