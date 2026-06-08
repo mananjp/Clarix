@@ -1,6 +1,6 @@
-// SFDR Compliance Workspace Core State Management
+// Regulatory Intelligence Engine — Core State Management
 const State = {
-    currentView: 'dashboard', // dashboard, matrix, reviewer, settings, audit
+    currentView: 'dashboard', // dashboard, matrix, reviewer, settings, audit, whatif
     projects: [],
     products: [],
     users: [],
@@ -12,6 +12,8 @@ const State = {
     matrixFilter: 'all',
     matrixSearchQuery: '',
     editorTab: 'narrative', // narrative, json
+    whatIfTemplates: [],
+    whatIfScenarios: [],
     settings: {
         groq_api_key_configured: false,
         default_model: 'llama3-70b-8192'
@@ -78,7 +80,25 @@ const API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-    }
+    },
+    
+    // New endpoints
+    getRegulationFields(framework) {
+        let url = '/api/regulation-fields';
+        if (framework) url += `?framework=${framework}`;
+        return this.fetch(url);
+    },
+    getCrossReferences(fieldId) { return this.fetch(`/api/regulation-fields/${fieldId}/cross-references`); },
+    getWhatIfTemplates() { return this.fetch('/api/what-if/templates'); },
+    runWhatIf(projectId, data) {
+        return this.fetch(`/api/projects/${projectId}/what-if`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+    },
+    getWhatIfScenarios(projectId) { return this.fetch(`/api/projects/${projectId}/what-if`); },
+    getLegalSummary(projectId) { return this.fetch(`/api/projects/${projectId}/legal-summary`); }
 };
 
 // --- DOM Navigation & Renderer ---
@@ -109,6 +129,8 @@ function setView(viewName) {
         renderSettings();
     } else if (viewName === 'audit' && State.selectedProjectId) {
         renderAuditTrail();
+    } else if (viewName === 'whatif' && State.selectedProjectId) {
+        renderWhatIfView();
     }
 }
 
@@ -154,6 +176,18 @@ function updateAvatar(username) {
     }
 }
 
+// --- Penalty Tier Badge Helper ---
+function renderPenaltyBadge(tier) {
+    const tierConfig = {
+        Critical: { class: 'penalty-critical', icon: '🔴', label: 'Critical' },
+        High: { class: 'penalty-high', icon: '🟠', label: 'High' },
+        Medium: { class: 'penalty-medium', icon: '🟡', label: 'Medium' },
+        Low: { class: 'penalty-low', icon: '🟢', label: 'Low' }
+    };
+    const config = tierConfig[tier] || tierConfig['Medium'];
+    return `<span class="penalty-badge ${config.class}" title="Legal Risk: ${config.label}">${config.icon} ${config.label}</span>`;
+}
+
 // Render Dashboard View
 async function renderDashboard() {
     showLoader(true);
@@ -176,7 +210,7 @@ async function renderDashboard() {
             grid.innerHTML = `
             <div class="glass-card" style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">
                 <h3>No active compliance projects found</h3>
-                <p style="margin-top: 10px;">Click "Create Project" above to start drafting your first SFDR RTS disclosure.</p>
+                <p style="margin-top: 10px;">Click "Create Project" above to start drafting your first regulatory compliance disclosure.</p>
             </div>`;
             updateDashboardKPIs(0, 0, 0);
             showLoader(false);
@@ -235,9 +269,10 @@ async function selectProject(projectId) {
     State.selectedProjectId = projectId;
     State.selectedProject = State.projects.find(p => p.id === projectId);
     
-    // Enable matrix and audit navigation tabs
+    // Enable matrix, audit, and what-if navigation tabs
     document.getElementById('nav-matrix').style.display = 'flex';
     document.getElementById('nav-audit').style.display = 'flex';
+    document.getElementById('nav-whatif').style.display = 'flex';
     setView('matrix');
 }
 
@@ -332,11 +367,14 @@ function renderMatrixTable() {
             ? `<span style="color:var(--accent-coral); font-weight:bold; font-size:1.1rem; vertical-align:middle; margin-left:4px;" title="Mandatory Field">*</span>` 
             : '';
 
+        // Legal risk column (NEW)
+        const penaltyBadge = renderPenaltyBadge(item.penalty_tier || 'Medium');
+
         tbody.innerHTML += `
         <tr onclick="openReviewer('${item.field_id}')" style="cursor:pointer;">
             <td style="font-weight:600; color:#fff;">${item.field_label}${mandatoryTag}</td>
             <td><code>${item.field_code}</code></td>
-            <td>${item.annex_code || 'Annex I'}</td>
+            <td>${penaltyBadge}</td>
             <td><span class="badge ${statusBadge}">${item.answer_status}</span></td>
             <td><strong style="color:var(--accent-cyan);">${displayVal}</strong></td>
             <td style="max-width:200px;">${valIndicators}</td>
@@ -360,12 +398,14 @@ function setMatrixFilter(btn) {
 function renderComplianceConsole() {
     const issuesContainer = document.getElementById('compliance-console-issues');
     const flagCountBadge = document.getElementById('console-flag-count');
+    const escalationBadge = document.getElementById('console-escalation-count');
     if (!issuesContainer) return;
 
     issuesContainer.innerHTML = '';
     let totalFlags = 0;
+    let escalationCount = 0;
 
-    // Gather failing matrix items
+    // Gather failing matrix items with enriched legal consequence data
     const failingItems = State.matrixItems.filter(item => !item.validation_passed);
     
     if (failingItems.length === 0) {
@@ -375,44 +415,81 @@ function renderComplianceConsole() {
         </div>`;
         flagCountBadge.innerText = '0 Flags';
         flagCountBadge.className = 'badge badge-approved';
+        if (escalationBadge) {
+            escalationBadge.innerText = '0 Escalations';
+            escalationBadge.className = 'badge badge-approved';
+        }
         return;
     }
 
     failingItems.forEach(item => {
-        item.validation_errors.forEach(err => {
-            totalFlags++;
-            let severity = 'warning';
-            let sevBadge = 'Warning';
-            let badgeClass = 'badge-draft';
-            
-            if (err.toLowerCase().includes('missing') || err.toLowerCase().includes('outside allowed') || err.toLowerCase().includes('invalid')) {
-                severity = 'error';
-                sevBadge = 'Error';
-                badgeClass = 'badge-missing';
-            } else if (err.toLowerCase().includes('too short') || err.toLowerCase().includes('brief')) {
-                severity = 'info';
-                sevBadge = 'Info';
-                badgeClass = 'badge-approved';
-            }
+        // Use enriched legal_consequences if available, otherwise fall back to errors
+        const consequences = item.legal_consequences || [];
+        
+        if (consequences.length > 0) {
+            consequences.forEach(lc => {
+                totalFlags++;
+                if (lc.escalation_required) escalationCount++;
 
-            issuesContainer.innerHTML += `
-            <div class="compliance-issue-card ${severity}">
-                <div style="display:flex; flex-direction:column; gap:4px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <span class="badge ${badgeClass}">${sevBadge}</span>
-                        <strong style="color:#fff; font-size:0.9rem;">${item.field_label} (<code>${item.field_code}</code>)</strong>
+                const severityBadge = lc.severity === 'Error' ? 'badge-missing' 
+                    : lc.severity === 'Info' ? 'badge-approved' : 'badge-draft';
+                
+                const escalationTag = lc.escalation_required 
+                    ? '<span class="badge penalty-critical" style="margin-left:6px;">⚡ ESCALATION</span>' : '';
+
+                issuesContainer.innerHTML += `
+                <div class="legal-consequence-card ${lc.escalation_required ? 'escalation' : ''}">
+                    <div class="lc-header">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span class="badge ${severityBadge}">${lc.severity}</span>
+                            ${renderPenaltyBadge(item.penalty_tier || 'Medium')}
+                            ${escalationTag}
+                            <strong style="color:#fff; font-size:0.9rem;">${item.field_label}</strong>
+                        </div>
+                        <button class="btn btn-secondary" style="padding:6px 12px; font-size:0.75rem; flex-shrink:0;" onclick="openReviewer('${item.field_id}')">
+                            Audit Field
+                        </button>
                     </div>
-                    <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:2px;">${err}</p>
-                </div>
-                <button class="btn btn-secondary" style="padding:6px 12px; font-size:0.75rem;" onclick="openReviewer('${item.field_id}')">
-                    Audit Field
-                </button>
-            </div>`;
-        });
+                    <div class="lc-body">
+                        <p style="color:var(--text-secondary); font-size:0.85rem;">${lc.message}</p>
+                        ${lc.regulation_ref ? `<div class="lc-reg-ref">📜 <strong>Legal Basis:</strong> ${lc.regulation_ref}</div>` : ''}
+                        ${lc.legal_consequence ? `<div class="lc-consequence">⚖️ <strong>Legal Consequence:</strong> ${lc.legal_consequence}</div>` : ''}
+                        ${lc.penalty_range ? `<div class="lc-penalty">💰 <strong>Penalty Range:</strong> ${lc.penalty_range}</div>` : ''}
+                        ${lc.remediation ? `
+                        <details class="lc-remediation">
+                            <summary>🔧 Remediation Playbook</summary>
+                            <pre>${lc.remediation}</pre>
+                        </details>` : ''}
+                    </div>
+                </div>`;
+            });
+        } else {
+            // Fallback to basic error display
+            item.validation_errors.forEach(err => {
+                totalFlags++;
+                issuesContainer.innerHTML += `
+                <div class="compliance-issue-card warning">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="badge badge-draft">Warning</span>
+                            <strong style="color:#fff; font-size:0.9rem;">${item.field_label} (<code>${item.field_code}</code>)</strong>
+                        </div>
+                        <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:2px;">${err}</p>
+                    </div>
+                    <button class="btn btn-secondary" style="padding:6px 12px; font-size:0.75rem;" onclick="openReviewer('${item.field_id}')">
+                        Audit Field
+                    </button>
+                </div>`;
+            });
+        }
     });
 
     flagCountBadge.innerText = `${totalFlags} Flags`;
     flagCountBadge.className = 'badge badge-rejected';
+    if (escalationBadge) {
+        escalationBadge.innerText = `${escalationCount} Escalations`;
+        escalationBadge.className = escalationCount > 0 ? 'badge badge-rejected' : 'badge badge-approved';
+    }
 }
 
 // Open Side-by-Side Reviewer Workspace
@@ -471,11 +548,95 @@ function openReviewer(fieldId) {
         sourceMeta.innerHTML = '<p style="color:var(--text-muted); font-size:0.85rem;">Run AI Extraction to scan documents.</p>';
     }
 
+    // Render Legal Risk Section (NEW)
+    renderLegalRiskSection(item);
+    
+    // Render Cross-Framework Links (NEW)
+    renderCrossRefSection(item);
+
     // Default to Narrative Editor tab
     switchEditorTab('narrative');
     
     // Render the structured JSON tab content
     renderStructuredJSONEditor();
+}
+
+function renderLegalRiskSection(item) {
+    const section = document.getElementById('rev-legal-risk-section');
+    if (!section) return;
+
+    section.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border-light); padding-bottom:12px; margin-bottom:12px;">
+        <h3 style="color:#fff; font-size:1rem;">⚖️ Legal Risk Profile</h3>
+        ${renderPenaltyBadge(item.penalty_tier || 'Medium')}
+    </div>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="legal-detail-row">
+            <span class="legal-detail-label">Legal Basis</span>
+            <span class="legal-detail-value">${item.legal_basis || 'Not specified'}</span>
+        </div>
+        <div class="legal-detail-row">
+            <span class="legal-detail-label">Enforcement Body</span>
+            <span class="legal-detail-value">${item.enforcement_body || 'National Competent Authority'}</span>
+        </div>
+        <div class="legal-detail-row">
+            <span class="legal-detail-label">Penalty Tier</span>
+            <span class="legal-detail-value">${renderPenaltyBadge(item.penalty_tier || 'Medium')}</span>
+        </div>
+        <div class="legal-detail-row">
+            <span class="legal-detail-label">Mandatory</span>
+            <span class="legal-detail-value">${item.mandatory ? '<span style="color:var(--accent-coral); font-weight:700;">Yes — Required</span>' : '<span style="color:var(--accent-emerald);">Optional</span>'}</span>
+        </div>
+    </div>
+    ${(item.legal_consequences && item.legal_consequences.length > 0) ? `
+    <div style="margin-top:16px; border-top:1px solid var(--border-light); padding-top:12px;">
+        <h4 style="color:var(--accent-coral); font-size:0.85rem; margin-bottom:8px;">Active Legal Consequences</h4>
+        ${item.legal_consequences.map(lc => `
+        <div class="lc-mini-card">
+            <p style="font-size:0.8rem; color:var(--text-secondary);">${lc.legal_consequence || lc.message}</p>
+            ${lc.penalty_range ? `<span style="font-size:0.75rem; color:var(--accent-gold);">💰 ${lc.penalty_range}</span>` : ''}
+        </div>`).join('')}
+    </div>` : ''}`;
+}
+
+function renderCrossRefSection(item) {
+    const section = document.getElementById('rev-cross-ref-section');
+    if (!section) return;
+
+    const refs = item.cross_references || [];
+    
+    if (refs.length === 0) {
+        section.innerHTML = `
+        <h3 style="color:#fff; font-size:1rem; border-bottom:1px solid var(--border-light); padding-bottom:12px;">🔗 Cross-Framework Links</h3>
+        <p style="color:var(--text-muted); font-size:0.85rem; margin-top:12px;">No cross-framework references mapped for this field.</p>`;
+        return;
+    }
+
+    section.innerHTML = `
+    <h3 style="color:#fff; font-size:1rem; border-bottom:1px solid var(--border-light); padding-bottom:12px;">🔗 Cross-Framework Links</h3>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+        ${refs.map(ref => `
+        <div class="cross-ref-card">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span class="cross-ref-framework-badge">${ref.framework}</span>
+                <code style="font-size:0.8rem; color:var(--accent-cyan);">${ref.field_code}</code>
+            </div>
+            <span class="cross-ref-relationship">${formatRelationship(ref.relationship)}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+function formatRelationship(rel) {
+    const labels = {
+        'equivalent_disclosure': '≡ Equivalent',
+        'complementary_indicator': '↔ Complementary',
+        'supplementary_data': '+ Supplementary',
+        'data_dependency': '⬇ Data Dependency',
+        'derived_metric': '∑ Derived Metric',
+        'exclusion_alignment': '⊘ Exclusion Alignment',
+        'direct_dependency': '⬇ Direct Dependency'
+    };
+    return labels[rel] || rel;
 }
 
 function switchEditorTab(tabName) {
@@ -588,6 +749,150 @@ function addHoldingRow() {
     }
 }
 
+// ===========================
+// WHAT-IF SIMULATOR (NEW)
+// ===========================
+
+async function renderWhatIfView() {
+    showLoader(true);
+    try {
+        // Load templates and past scenarios
+        State.whatIfTemplates = await API.getWhatIfTemplates();
+        State.whatIfScenarios = await API.getWhatIfScenarios(State.selectedProjectId);
+
+        // Render template cards
+        const grid = document.getElementById('whatif-template-grid');
+        grid.innerHTML = '';
+
+        State.whatIfTemplates.forEach((tpl, idx) => {
+            const actionIcon = tpl.parameters.action === 'remove_field' ? '🚫' 
+                : tpl.parameters.action === 'threshold_change' ? '📉' : '🔄';
+            
+            grid.innerHTML += `
+            <div class="whatif-template-card glass-card fade-in" onclick="runWhatIfScenario(${idx})">
+                <div class="whatif-template-icon">${actionIcon}</div>
+                <h4 style="color:#fff; font-size:0.95rem;">${tpl.scenario_name}</h4>
+                <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:6px;">${tpl.scenario_description}</p>
+                <div style="margin-top:12px;">
+                    <span class="btn btn-secondary" style="padding:6px 14px; font-size:0.8rem;">Run Simulation →</span>
+                </div>
+            </div>`;
+        });
+
+        // Render history
+        renderWhatIfHistory();
+
+    } finally {
+        showLoader(false);
+    }
+}
+
+async function runWhatIfScenario(templateIndex) {
+    const tpl = State.whatIfTemplates[templateIndex];
+    if (!tpl) return;
+
+    showLoader(true);
+    try {
+        const result = await API.runWhatIf(State.selectedProjectId, {
+            scenario_name: tpl.scenario_name,
+            scenario_description: tpl.scenario_description,
+            parameters: tpl.parameters
+        });
+
+        // Show results panel
+        const panel = document.getElementById('whatif-results-panel');
+        panel.style.display = 'flex';
+
+        document.getElementById('whatif-result-title').innerText = result.scenario_name;
+
+        // Risk gauge
+        const gauge = document.getElementById('whatif-risk-gauge');
+        const scoreEl = document.getElementById('whatif-risk-score');
+        scoreEl.innerText = Math.round(result.risk_score);
+        
+        gauge.className = 'risk-gauge';
+        if (result.risk_score >= 75) gauge.classList.add('risk-critical');
+        else if (result.risk_score >= 50) gauge.classList.add('risk-high');
+        else if (result.risk_score >= 25) gauge.classList.add('risk-medium');
+        else gauge.classList.add('risk-low');
+
+        // Triggered obligations
+        const oblContainer = document.getElementById('whatif-obligations');
+        oblContainer.innerHTML = '';
+        const obligations = result.triggered_obligations || [];
+        obligations.forEach(obl => {
+            oblContainer.innerHTML += `
+            <div class="whatif-obligation-card">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="cross-ref-framework-badge">${obl.regulation_article || 'Regulation'}</span>
+                </div>
+                <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:6px;">${obl.description}</p>
+            </div>`;
+        });
+
+        // Legal consequences
+        const consContainer = document.getElementById('whatif-consequences');
+        consContainer.innerHTML = '';
+        const consequences = result.legal_consequences || [];
+        consequences.forEach(con => {
+            const sevClass = con.severity === 'High' ? 'penalty-high' 
+                : con.severity === 'Medium' ? 'penalty-medium'
+                : con.severity === 'Info' ? 'penalty-low' : 'penalty-critical';
+            
+            consContainer.innerHTML += `
+            <div class="whatif-consequence-card">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <span class="penalty-badge ${sevClass}">${con.severity}</span>
+                    <span style="color:var(--text-muted); font-size:0.8rem; text-transform:uppercase;">${con.type}</span>
+                </div>
+                <p style="color:var(--text-secondary); font-size:0.85rem;">${con.description}</p>
+            </div>`;
+        });
+
+        // Refresh history
+        State.whatIfScenarios = await API.getWhatIfScenarios(State.selectedProjectId);
+        renderWhatIfHistory();
+
+        // Scroll to results
+        panel.scrollIntoView({ behavior: 'smooth' });
+
+    } finally {
+        showLoader(false);
+    }
+}
+
+function renderWhatIfHistory() {
+    const container = document.getElementById('whatif-history');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (State.whatIfScenarios.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No simulations run yet. Select a scenario above to get started.</p>';
+        return;
+    }
+
+    State.whatIfScenarios.forEach(sc => {
+        const dateStr = new Date(sc.created_at).toLocaleString();
+        const riskClass = sc.risk_score >= 75 ? 'risk-critical' : sc.risk_score >= 50 ? 'risk-high' : sc.risk_score >= 25 ? 'risk-medium' : 'risk-low';
+        
+        container.innerHTML += `
+        <div class="whatif-history-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <strong style="color:#fff;">${sc.scenario_name}</strong>
+                    <span style="color:var(--text-muted); font-size:0.8rem; margin-left:8px;">${dateStr}</span>
+                </div>
+                <div class="risk-gauge-mini ${riskClass}">
+                    <span>${Math.round(sc.risk_score)}</span>
+                </div>
+            </div>
+            <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:4px;">${sc.scenario_description || ''}</p>
+        </div>`;
+    });
+}
+
+
 // Render Audit Trail View
 async function renderAuditTrail() {
     if (!State.selectedProjectId) return;
@@ -616,10 +921,12 @@ async function renderAuditTrail() {
             else if (log.action === 'manual_edit') { icon = '✏️'; actionClass = 'modify'; }
             else if (log.action === 'process_ai') { icon = '🤖'; actionClass = 'modify'; }
             else if (log.action === 'validate') { icon = '🛡️'; actionClass = 'modify'; }
+            else if (log.action === 'simulate') { icon = '🧪'; actionClass = 'modify'; }
             
             const actorDisplay = log.actor_username ? `${log.actor_username} (${log.actor_role})` : 'System Processes';
             let actionText = `${log.action.replace('_', ' ').toUpperCase()}`;
             if (log.action === 'manual_edit') actionText = 'Manual Revision Saved';
+            if (log.action === 'simulate') actionText = 'What-If Simulation';
 
             let payloadStr = '';
             if (log.payload && Object.keys(log.payload).length > 0) {
@@ -790,6 +1097,7 @@ async function deleteProject(event, projectId) {
             document.getElementById('nav-matrix').style.display = 'none';
             document.getElementById('nav-reviewer').style.display = 'none';
             document.getElementById('nav-audit').style.display = 'none';
+            document.getElementById('nav-whatif').style.display = 'none';
         }
         renderDashboard();
     } finally {
