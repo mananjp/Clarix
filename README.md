@@ -2,7 +2,7 @@
 
 An enterprise-ready, GenAI-powered regulatory compliance workspace designed to automate, audit, and simulate Sustainable Finance Disclosure Regulation (SFDR) Regulatory Technical Standards (RTS) reporting for asset managers.
 
-This application simplifies the complex process of compiling entity-level Principal Adverse Impact (PAI) indicators and periodic financial product disclosures (Article 8 & Article 9) by leveraging layout-aware RAG, LLM-based extraction, programmatic validation, legal consequence mapping, a what-if risk simulator, and multi-user reviewer workflows.
+This application simplifies the complex process of compiling entity-level Principal Adverse Impact (PAI) indicators and periodic financial product disclosures (Article 8 & Article 9) by leveraging layout-aware RAG, LLM-based extraction, programmatic validation, legal consequence mapping, a regulatory impact simulator, and multi-user reviewer workflows.
 
 ---
 
@@ -10,7 +10,7 @@ This application simplifies the complex process of compiling entity-level Princi
 
 * **Regulatory Consequence Engine**: Enriches every disclosure requirement with legal basis metadata (specific RTS articles), penalty severity tiers (Low, Medium, High, Critical), and responsible enforcement bodies (e.g. ESMA, NCAs).
 * **Automated Compliance Rules & Remediation Playbooks**: Programmatic sanitization and validation checks that link errors directly to legal risk evaluations and actionable, step-by-step remediation playbooks.
-* **What-If Simulator Dashboard**: A simulation sandbox that allows compliance officers to test hypothetical scenarios (e.g. removing Scope 3 disclosures, dropping board gender diversity below 30%, or reclassifying funds between SFDR Article 6/8/9) to predict triggered obligations and risk scores.
+* **Regulatory Impact Simulator Dashboard**: A simulation sandbox that allows compliance officers to test hypothetical scenarios (e.g. removing Scope 3 disclosures, dropping board gender diversity below 30%, or reclassifying funds between SFDR Article 6/8/9) to predict triggered obligations and risk scores.
 * **Cross-Framework Alignment**: Relationally maps SFDR requirements to equivalent standards in other frameworks (such as CSRD ESRS indicators).
 * **RAG-Driven Ingestion & Retrieval**: Layout-aware parsing of PDF/TXT sustainability reports using PyMuPDF, segmented into logical semantic chunks with MD5-based deduplication hashes.
 * **Audit-Grade Traceability**: Relationally tracks `regulation_version`, `prompt_version`, and `model_parameters` for every drafted response, alongside detailed system audit logs relationally linked to actions.
@@ -57,7 +57,7 @@ erDiagram
 * **`RegulationField`**: Dictionary of SFDR RTS regulatory indicators enriched with legal basis, penalty tiers, enforcement body, and CSRD cross-references.
 * **`FieldEvidence`**: Stores extracted values, units, confidence scores, and source quotes. Enforces composite uniqueness on `(project_id, regulation_field_id, document_chunk_id, extraction_method)` to avoid duplicate citations.
 * **`FieldAnswer`**: Stores disclosure statements, tracking version history (`version_no`, `is_latest`).
-* **`WhatIfScenario`**: Persists historical compliance simulations and risk scores.
+* **`WhatIfScenario`**: Persists historical regulatory impact simulations and risk scores.
 * **`AuditLog`**: Relational audit trails linked directly to the acting user.
 
 ---
