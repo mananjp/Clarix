@@ -104,7 +104,7 @@ const AuditExport = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SFDR_Disclosure_${projectName}_${new Date().toISOString().split('T')[0]}.${ext}`;
+    a.download = `Clarix_Disclosure_${projectName}_${new Date().toISOString().split('T')[0]}.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -220,9 +220,8 @@ const AuditExport = () => {
                             setSelectedProjectId(p.id);
                             setIsDropdownOpen(false);
                           }}
-                          className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-primary-50 transition-colors border-b border-slate-50 last:border-b-0 ${
-                            selectedProjectId === p.id ? 'bg-primary-50/70' : ''
-                          }`}
+                          className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-primary-50 transition-colors border-b border-slate-50 last:border-b-0 ${selectedProjectId === p.id ? 'bg-primary-50/70' : ''
+                            }`}
                         >
                           <div className="flex flex-col min-w-0">
                             <span className="font-semibold text-slate-800 truncate">{p.name}</span>
@@ -231,11 +230,10 @@ const AuditExport = () => {
                             </span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                              p.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' :
-                              p.status === 'Validating' ? 'bg-amber-50 text-amber-600' :
-                              'bg-slate-100 text-slate-500'
-                            }`}>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${p.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' :
+                                p.status === 'Validating' ? 'bg-amber-50 text-amber-600' :
+                                  'bg-slate-100 text-slate-500'
+                              }`}>
                               {p.status}
                             </span>
                             {selectedProjectId === p.id && <Check size={16} className="text-primary-600" />}
@@ -262,10 +260,9 @@ const AuditExport = () => {
                   </div>
                   <div className="bg-slate-50 rounded-lg px-3 py-2">
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</div>
-                    <div className={`text-sm font-bold mt-0.5 ${
-                      selectedProject.status === 'Completed' ? 'text-emerald-600' :
-                      selectedProject.status === 'Validating' ? 'text-amber-600' : 'text-slate-700'
-                    }`}>
+                    <div className={`text-sm font-bold mt-0.5 ${selectedProject.status === 'Completed' ? 'text-emerald-600' :
+                        selectedProject.status === 'Validating' ? 'text-amber-600' : 'text-slate-700'
+                      }`}>
                       {selectedProject.status}
                     </div>
                   </div>
@@ -312,22 +309,20 @@ const AuditExport = () => {
               <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
                 <button
                   onClick={() => setActiveTab('markdown')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                    activeTab === 'markdown'
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'markdown'
                       ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/20'
                       : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   <FileText size={14} />
                   Markdown
                 </button>
                 <button
                   onClick={() => setActiveTab('html')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                    activeTab === 'html'
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'html'
                       ? 'bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-md shadow-violet-500/20'
                       : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   <Code2 size={14} />
                   HTML Report

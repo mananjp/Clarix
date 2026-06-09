@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadCloud, Search, Download, Play, Filter, Loader } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { UploadCloud, Search, Download, Play, Filter, Loader, FileText, CheckCircle, AlertTriangle, Scale } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 import client from '../api/client';
 import { useProjects } from '../context/ProjectContext';
 
@@ -15,32 +16,72 @@ const rowVariants = {
 };
 
 const RequirementMatrix = () => {
-  const { projects, isLoadingProjects, fetchProjects } = useProjects();
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const { projects = [], isLoadingProjects, fetchProjects, selectedProjectId: globalProjectId, selectProject } = useProjects();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedProjectId, setSelectedProjectId] = useState(searchParams.get('projectId') || globalProjectId || '');
   const [matrixItems, setMatrixItems] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [isMatrixLoading, setIsMatrixLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  
+
   const fileInputRef = useRef(null);
 
-  // No auto-select, wait for user selection
-
-  // Fetch matrix when selected project changes
+  // Sync internal state with global state and URL
   useEffect(() => {
-    if (!selectedProjectId) return;
-    const fetchMatrix = async () => {
-      setIsMatrixLoading(true);
-      try {
-        const res = await client.get(`/projects/${selectedProjectId}/matrix`);
-        setMatrixItems(res.data);
-      } catch (err) {
-        console.error("Failed to fetch matrix", err);
-      } finally {
-        setIsMatrixLoading(false);
+    const urlId = searchParams.get('projectId');
+    if (urlId && urlId !== selectedProjectId) {
+      setSelectedProjectId(urlId);
+      selectProject(urlId);
+    } else if (!urlId && globalProjectId && globalProjectId !== selectedProjectId) {
+      setSelectedProjectId(globalProjectId);
+      setSearchParams({ projectId: globalProjectId }, { replace: true });
+    }
+  }, [searchParams, globalProjectId]);
+
+  // Single handler for project selection — updates global state and URL
+  const handleProjectSelect = (projectId) => {
+    setSelectedProjectId(projectId);
+    selectProject(projectId);
+    if (projectId) {
+      setSearchParams({ projectId }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  // After projects load, validate that the URL's projectId actually exists.
+  useEffect(() => {
+    if (isLoadingProjects || projects.length === 0) return;
+    if (selectedProjectId) {
+      const exists = projects.some(p => String(p.id) === String(selectedProjectId));
+      if (!exists) {
+        handleProjectSelect('');
+        setMatrixItems([]);
       }
-    };
-    fetchMatrix();
+    }
+  }, [projects, isLoadingProjects]);
+
+  // Fetch matrix and documents when selected project changes
+  const fetchData = async () => {
+    if (!selectedProjectId) return;
+    setIsMatrixLoading(true);
+    try {
+      const [matrixRes, docsRes] = await Promise.all([
+        client.get(`/projects/${selectedProjectId}/matrix`),
+        client.get(`/projects/${selectedProjectId}/documents`)
+      ]);
+      setMatrixItems(matrixRes.data || []);
+      setDocuments(docsRes.data || []);
+    } catch (err) {
+      console.error("Failed to fetch data", err);
+    } finally {
+      setIsMatrixLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
   }, [selectedProjectId]);
 
   const handleFileUpload = async (e) => {
@@ -50,13 +91,13 @@ const RequirementMatrix = () => {
     setIsUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('source_type', 'sustainability_report'); // default for now
+    formData.append('source_type', 'sustainability_report');
 
     try {
       await client.post(`/projects/${selectedProjectId}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      await fetchProjects(); // refresh global state
+      await Promise.all([fetchProjects(), fetchData()]);
       alert('Document uploaded and parsed successfully!');
     } catch (err) {
       console.error("Upload failed", err);
@@ -72,10 +113,7 @@ const RequirementMatrix = () => {
     setIsProcessing(true);
     try {
       await client.post(`/projects/${selectedProjectId}/process`);
-      // Refetch matrix after processing
-      const res = await client.get(`/projects/${selectedProjectId}/matrix`);
-      setMatrixItems(res.data);
-      await fetchProjects(); // update project status globally
+      await Promise.all([fetchProjects(), fetchData()]);
       alert('GenAI Extraction & Drafting Complete!');
     } catch (err) {
       console.error("GenAI processing failed", err);
@@ -85,13 +123,13 @@ const RequirementMatrix = () => {
     }
   };
 
-  const selectedProject = projects.find(p => p.id === selectedProjectId);
+  const selectedProject = (projects || []).find(p => String(p.id) === String(selectedProjectId));
 
   if (isLoadingProjects) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-        <div className="text-slate-500 font-bold">Loading workspace data...</div>
+        <div className="text-slate-500 font-bold">Loading Clarix data...</div>
       </div>
     );
   }
@@ -102,7 +140,7 @@ const RequirementMatrix = () => {
       <div className="glass-card p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <span className="text-xs font-black text-primary-600 uppercase tracking-wider">Active Workspace</span>
+            <span className="text-xs font-black text-primary-600 uppercase tracking-wider">Clarix Workspace</span>
             {selectedProject?.status === 'Validating' && (
               <span className="badge badge-warning flex items-center gap-1.5 animate-pulse text-[10px] py-0.5 px-2">
                 <Loader size={10} className="animate-spin" />
@@ -111,10 +149,10 @@ const RequirementMatrix = () => {
             )}
           </div>
           {projects.length > 0 ? (
-            <select 
+            <select
               className="mt-1 block w-full bg-transparent text-2xl font-bold text-slate-800 border-none outline-none focus:ring-0 cursor-pointer"
               value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
+              onChange={(e) => handleProjectSelect(e.target.value)}
             >
               <option value="" disabled>Select a Project...</option>
               {projects.map(p => (
@@ -129,9 +167,9 @@ const RequirementMatrix = () => {
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="btn btn-secondary">
             Run Rules Engine
           </motion.button>
-          <motion.button 
-            whileHover={{ scale: 1.02 }} 
-            whileTap={{ scale: 0.98 }} 
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={handleExecuteGenAI}
             disabled={isProcessing || !selectedProjectId}
             className="btn btn-primary shadow-primary-500/30 disabled:opacity-70"
@@ -147,19 +185,19 @@ const RequirementMatrix = () => {
         <div className="flex justify-between items-center flex-wrap gap-4 border-b border-slate-100 pb-4">
           <div>
             <h3 className="font-bold text-lg text-slate-800">1. Document Ingest & OCR</h3>
-            <p className="text-sm text-slate-500 font-medium mt-1">Upload sustainability reports or asset allocations.</p>
+            <p className="text-sm text-slate-500 font-medium mt-1">Upload sustainability reports or asset allocations to populate the matrix.</p>
           </div>
         </div>
 
-        <input 
-          type="file" 
+        <input
+          type="file"
           ref={fileInputRef}
           onChange={handleFileUpload}
-          className="hidden" 
+          className="hidden"
           accept=".pdf,.txt,.csv"
         />
 
-        <motion.div 
+        <motion.div
           whileHover={selectedProjectId ? { borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.05)' } : {}}
           onClick={() => {
             if (!selectedProjectId) {
@@ -168,7 +206,7 @@ const RequirementMatrix = () => {
             }
             fileInputRef.current?.click();
           }}
-          className={`flex flex-col items-center justify-center p-10 border-2 border-dashed border-slate-200 rounded-xl transition-colors bg-slate-50/50 ${selectedProjectId ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`} 
+          className={`flex flex-col items-center justify-center p-10 border-2 border-dashed border-slate-200 rounded-xl transition-colors bg-slate-50/50 ${selectedProjectId ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}
         >
           {isUploading ? (
             <div className="flex flex-col items-center">
@@ -184,23 +222,57 @@ const RequirementMatrix = () => {
               >
                 <UploadCloud size={32} className="text-primary-500" />
               </motion.div>
-              <p className="font-bold text-slate-700 text-lg mb-1">Click to upload files</p>
+              <p className="font-bold text-slate-700 text-lg mb-1">Click to upload documents</p>
               <p className="text-sm font-medium text-slate-400">Supports PDF, TXT, CSV</p>
             </>
           )}
         </motion.div>
+
+        {/* List of uploaded documents */}
+        <AnimatePresence>
+          {documents.length > 0 && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="flex flex-col gap-2 mt-4 overflow-hidden"
+            >
+              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">Active Portfolio</h4>
+              <div className="grid gap-2">
+                {documents.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center text-slate-400">
+                        <FileText size={16} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">{doc.file_name}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{doc.source_type} • {doc.file_type}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${doc.parsed_status === 'Completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                        {doc.parsed_status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Matrix Table */}
       <div className="glass-card flex flex-col overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/40">
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-            2. SFDR Compliance Matrix
+            2. Clarix Compliance Matrix
             <span className="bg-primary-100 text-primary-700 py-0.5 px-2.5 rounded-full text-xs font-black">
               {matrixItems.length}
             </span>
           </h3>
-          
+
           <div className="flex items-center gap-3 w-full md:w-auto">
             <div className="relative flex-1 md:w-64">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -209,7 +281,7 @@ const RequirementMatrix = () => {
             <button className="btn btn-secondary"><Download size={16} /> Export</button>
           </div>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -225,67 +297,45 @@ const RequirementMatrix = () => {
             <motion.tbody variants={containerVariants} initial="hidden" animate="show" className="divide-y divide-slate-100">
               {isMatrixLoading ? (
                 <tr>
-                  <td colSpan="6" className="p-12">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="w-8 h-8 border-4 border-slate-200 border-t-primary-600 rounded-full animate-spin"></div>
-                      <span className="text-slate-500 font-bold text-sm">Fetching matrix records...</span>
-                    </div>
+                  <td colSpan="6" className="p-12 text-center">
+                    <Loader size={32} className="animate-spin text-primary-600 mx-auto" />
                   </td>
                 </tr>
-              ) : !selectedProjectId ? (
-                <tr><td colSpan="6" className="p-8 text-center text-slate-500 font-medium">Please select a project from the Active Workspace dropdown.</td></tr>
               ) : matrixItems.length === 0 ? (
-                <tr><td colSpan="6" className="p-8 text-center text-slate-500 font-medium">No matrix data available.</td></tr>
-              ) : matrixItems.map(item => (
-                <motion.tr variants={rowVariants} key={item.field_id} className="hover:bg-slate-50/50 transition-colors group cursor-pointer">
-                  <td className="p-4 pl-6">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-slate-800 group-hover:text-primary-600 transition-colors">{item.field_label}</span>
-                      {item.mandatory && <span className="text-rose-500 font-bold text-xs mt-0.5">* Mandatory</span>}
-                      {item.cross_references && item.cross_references.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {item.cross_references.map((ref, idx) => (
-                            <span key={idx} className="inline-flex items-center text-[10px] font-bold bg-indigo-50/80 text-indigo-600 rounded px-1.5 py-0.5 border border-indigo-100/50">
-                              🔗 {ref.framework}: {ref.field_code}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                <tr>
+                  <td colSpan="6" className="p-12 text-center text-slate-400 font-bold">
+                    No records found for this scope. Upload documents to begin.
                   </td>
-                  <td className="p-4">
-                    <code className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-mono border border-slate-200">{item.field_code}</code>
-                  </td>
-                  <td className="p-4">
-                    <span className={`badge ${
-                      item.answer_status === 'Approved' ? 'badge-success' : 
-                      item.answer_status === 'Draft' ? 'bg-indigo-50 text-indigo-700' : 'badge-danger'
-                    }`}>
-                      {item.answer_status}
-                    </span>
-                  </td>
-                  <td className="p-4 font-semibold text-slate-700 max-w-xs truncate">
-                    {item.extracted_value?.value || item.extracted_value || '-'}
-                  </td>
-                  <td className="p-4">
-                    <span className={`inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                      item.penalty_tier === 'Critical' ? 'bg-red-50 text-red-700 border-red-200' :
-                      item.penalty_tier === 'High' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                      item.penalty_tier === 'Medium' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                      'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    }`}>
-                      {item.penalty_tier || 'Medium'}
-                    </span>
-                  </td>
-                  <td className="p-4 pr-6">
-                    <span className={`text-sm font-bold flex items-center gap-1.5 ${item.validation_passed ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {item.validation_passed && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>}
-                      {!item.validation_passed && <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>}
-                      {item.validation_passed ? 'Passed' : 'Issues Found'}
-                    </span>
-                  </td>
-                </motion.tr>
-              ))}
+                </tr>
+              ) : (
+                matrixItems.map((item) => (
+                  <motion.tr key={item.field_id} variants={rowVariants} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
+                    <td className="p-4 pl-6">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-slate-800">{item.field_label}</span>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">{item.annex_code}</span>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <code className="text-[11px] bg-slate-100 text-slate-600 px-2 py-1 rounded font-mono">{item.field_code}</code>
+                    </td>
+                    <td className="p-4">
+                      <span className={`badge ${item.answer_status === 'Approved' ? 'badge-success' : item.answer_status === 'Draft' ? 'badge-warning' : 'badge-default'}`}>
+                        {item.answer_status}
+                      </span>
+                    </td>
+                    <td className="p-4 font-bold text-slate-700">{item.answer_text ? (item.answer_text.length > 50 ? item.answer_text.substring(0, 50) + '...' : item.answer_text) : '-'}</td>
+                    <td className="p-4">
+                      <span className={`text-[10px] font-black px-2 py-1 rounded border ${item.penalty_tier === 'Critical' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>
+                        {item.penalty_tier || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="p-4 pr-6">
+                      {item.is_valid === true ? <CheckCircle size={18} className="text-emerald-500" /> : <AlertTriangle size={18} className="text-amber-500" />}
+                    </td>
+                  </motion.tr>
+                ))
+              )}
             </motion.tbody>
           </table>
         </div>

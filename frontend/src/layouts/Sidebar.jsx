@@ -1,40 +1,48 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert, LogOut, Package, Scale, ShieldCheck, LineChart } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { useProjects } from '../context/ProjectContext';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { logout, currentUser } = useAuth();
-  
+  const { selectedProjectId } = useProjects();
+
+  const getPathWithProject = (to) => {
+    if (!selectedProjectId || to === '/dashboard' || to === '/settings') return to;
+    return `${to}?projectId=${selectedProjectId}`;
+  };
+
   return (
     <>
       {/* Mobile Overlay */}
-      <div 
-        className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 transition-opacity lg:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+      <div
+        className={`fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-30 transition-opacity lg:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={onClose}
       ></div>
-      
-      <aside 
-        className={`fixed lg:static inset-y-0 left-0 w-64 bg-white/80 backdrop-blur-xl border-r border-white/50 shadow-[4px_0_24px_rgba(0,0,0,0.02)] flex flex-col z-40 transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 w-72 bg-white flex flex-col z-40 transition-transform duration-300 border-r border-slate-100 ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-primary-600 to-accent-indigo rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary-500/30">
-              <ShieldAlert size={18} strokeWidth={2.5} />
+            <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-white shadow-xl shadow-slate-900/10">
+              <ShieldAlert size={22} strokeWidth={2} />
             </div>
-            <span className="font-bold text-lg text-slate-800 tracking-tight">SFDR<span className="text-primary-600 font-black">.</span>AI</span>
+            <span className="font-bold text-2xl text-slate-900 tracking-tight">Clarix</span>
           </div>
-          <button className="lg:hidden text-slate-500 hover:text-slate-700" onClick={onClose}>
+          <button className="lg:hidden text-slate-400 hover:text-slate-900" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
- 
+
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {[
             { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
             { to: '/matrix', icon: Table, label: 'Requirement Matrix' },
             { to: '/reviewer', icon: ClipboardCheck, label: 'Reviewer Desk' },
-            { to: '/regulatory-impact', icon: Scale, label: 'Regulatory Impact Simulator' },
+            { to: '/regulatory-impact', icon: Scale, label: 'Impact Simulator' },
             { to: '/auditor', icon: ShieldCheck, label: 'Auditor Portal' },
             { to: '/trends', icon: LineChart, label: 'Predictive Trends' },
             { to: '/audit', icon: History, label: 'Audit Trail' },
@@ -43,21 +51,24 @@ const Sidebar = ({ isOpen, onClose }) => {
           ].map((item) => (
             <NavLink
               key={item.to}
-              to={item.to}
+              to={getPathWithProject(item.to)}
               onClick={onClose}
               className={({ isActive }) => `
-                relative flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-all duration-200 group overflow-hidden
-                ${isActive 
-                  ? 'text-primary-700 bg-primary-50/80 shadow-[inset_0_1px_0_white,0_1px_3px_rgba(0,0,0,0.02)] border border-primary-100' 
-                  : 'text-slate-600 hover:bg-slate-50/80 hover:text-slate-900 border border-transparent'}
+                relative flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group
+                ${isActive
+                  ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/10'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}
               `}
             >
               {({ isActive }) => (
                 <>
-                  <item.icon size={18} className={`transition-colors ${isActive ? 'text-primary-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                  <span className="relative z-10">{item.label}</span>
+                  <item.icon size={20} className={`${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-900'}`} />
+                  <span className="text-sm font-bold tracking-tight">{item.label}</span>
                   {isActive && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary-500 rounded-r-md"></div>
+                    <motion.div
+                      layoutId="sidebar-active"
+                      className="absolute left-2 w-1.5 h-1.5 bg-white rounded-full"
+                    />
                   )}
                 </>
               )}
@@ -65,14 +76,15 @@ const Sidebar = ({ isOpen, onClose }) => {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 m-4 rounded-xl border flex flex-col gap-3">
-          <div>
-            <div className="text-xs font-semibold text-slate-800">{currentUser?.username ? `Welcome, ${currentUser.username}` : 'Admin Workspace'}</div>
-            <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider">{currentUser?.role || 'Premium Edition'}</div>
+        <div className="p-4 border-t border-slate-100 mt-auto">
+          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 mb-2">
+            <div className="text-xs font-bold text-slate-900 uppercase tracking-widest">{currentUser?.username || 'Guest Administrator'}</div>
+            <div className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-widest">{currentUser?.role || 'Reviewer Account'}</div>
           </div>
-          <button 
+
+          <button
             onClick={logout}
-            className="flex items-center justify-center gap-2 w-full py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors"
+            className="flex items-center justify-center gap-2 w-full py-4 bg-white border border-slate-100 rounded-2xl text-xs font-black text-slate-400 hover:text-rose-600 hover:border-rose-100 hover:bg-rose-50 transition-all uppercase tracking-widest"
           >
             <LogOut size={16} />
             <span>Sign Out</span>

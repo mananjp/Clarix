@@ -28,11 +28,11 @@ const TrendDashboard = () => {
   const [effectType, setEffectType] = useState('relative_reduction');
   const [effectMagnitude, setEffectMagnitude] = useState(0.20); // 20%
   const [applicableFromYear, setApplicableFromYear] = useState(2026);
-  
+
   // Targets inputs
   const [targetValue, setTargetValue] = useState('');
   const [targetYear, setTargetYear] = useState('2026');
-  
+
   const activeMetric = BRSR_METRICS.find(m => m.code === activeMetricCode);
 
   // Auto-detect organization ID from active project
@@ -49,7 +49,7 @@ const TrendDashboard = () => {
     try {
       const targetValNum = targetValue !== '' ? parseFloat(targetValue) : null;
       const targetYrNum = targetYear !== '' ? parseInt(targetYear) : null;
-      
+
       let params = { horizon: 1 };
       if (targetValNum !== null) params.target_value = targetValNum;
       if (targetYrNum !== null) params.target_year = targetYrNum;
@@ -100,7 +100,7 @@ const TrendDashboard = () => {
     try {
       const targetValNum = targetValue !== '' ? parseFloat(targetValue) : null;
       const targetYrNum = targetYear !== '' ? parseInt(targetYear) : null;
-      
+
       let params = {};
       if (targetValNum !== null) params.target_value = targetValNum;
       if (targetYrNum !== null) params.target_year = targetYrNum;
@@ -135,7 +135,7 @@ const TrendDashboard = () => {
     // Compile all years and values
     const years = history.map(h => h.year);
     const values = history.map(h => h.value);
-    
+
     let allYears = [...years];
     let allValues = [...values];
 
@@ -182,7 +182,7 @@ const TrendDashboard = () => {
     let forecastUpperCoord = null;
     let forecastLowerCoord = null;
     let confidencePoly = '';
-    
+
     if (forecast.status === 'ok') {
       forecastBaseCoord = { x: getX(forecast.target_year), y: getY(forecast.forecast_value) };
       forecastUpperCoord = { x: getX(forecast.target_year), y: getY(forecast.upper_bound_80pct) };
@@ -215,7 +215,7 @@ const TrendDashboard = () => {
 
     // Generate X-axis grid ticks (all years)
     const xTicks = [];
-    const uniqueYears = Array.from(new Set(allYears)).sort((a,b)=>a-b);
+    const uniqueYears = Array.from(new Set(allYears)).sort((a, b) => a - b);
     uniqueYears.forEach(yr => {
       xTicks.push({ year: yr, x: getX(yr) });
     });
@@ -232,19 +232,19 @@ const TrendDashboard = () => {
         {/* Grid lines */}
         {yTicks.map((t, i) => (
           <g key={i}>
-            <line 
-              x1={margin.left} 
-              y1={t.y} 
-              x2={width - margin.right} 
-              y2={t.y} 
-              stroke="#e2e8f0" 
-              strokeWidth="1" 
-              strokeDasharray="4 4" 
+            <line
+              x1={margin.left}
+              y1={t.y}
+              x2={width - margin.right}
+              y2={t.y}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+              strokeDasharray="4 4"
             />
-            <text 
-              x={margin.left - 8} 
-              y={t.y + 4} 
-              textAnchor="end" 
+            <text
+              x={margin.left - 8}
+              y={t.y + 4}
+              textAnchor="end"
               className="text-[10px] font-bold text-slate-400 font-mono"
             >
               {Math.round(t.value).toLocaleString()}
@@ -254,19 +254,19 @@ const TrendDashboard = () => {
 
         {xTicks.map((t, i) => (
           <g key={i}>
-            <line 
-              x1={t.x} 
-              y1={margin.top} 
-              x2={t.x} 
-              y2={height - margin.bottom} 
-              stroke="#e2e8f0" 
-              strokeWidth="1" 
-              strokeDasharray="4 4" 
+            <line
+              x1={t.x}
+              y1={margin.top}
+              x2={t.x}
+              y2={height - margin.bottom}
+              stroke="#e2e8f0"
+              strokeWidth="1"
+              strokeDasharray="4 4"
             />
-            <text 
-              x={t.x} 
-              y={height - margin.bottom + 18} 
-              textAnchor="middle" 
+            <text
+              x={t.x}
+              y={height - margin.bottom + 18}
+              textAnchor="middle"
               className="text-[10px] font-bold text-slate-500 font-mono"
             >
               {t.year}
@@ -276,10 +276,10 @@ const TrendDashboard = () => {
 
         {/* Confidence Band Area */}
         {forecast.status === 'ok' && (
-          <path 
-            d={confidencePoly} 
-            fill="#818cf8" 
-            fillOpacity="0.1" 
+          <path
+            d={confidencePoly}
+            fill="#818cf8"
+            fillOpacity="0.1"
             className="transition-all duration-300"
           />
         )}
@@ -293,25 +293,25 @@ const TrendDashboard = () => {
         )}
 
         {/* Historical Line */}
-        <path 
-          d={historyPath} 
-          fill="none" 
-          stroke="#4f46e5" 
-          strokeWidth="3" 
-          strokeLinecap="round" 
-          strokeLinejoin="round" 
+        <path
+          d={historyPath}
+          fill="none"
+          stroke="#4f46e5"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
 
         {/* Historical Dots */}
         {historyCoords.map((p, i) => (
-          <circle 
-            key={i} 
-            cx={p.x} 
-            cy={p.y} 
-            r="5" 
-            fill="#ffffff" 
-            stroke="#4f46e5" 
-            strokeWidth="2.5" 
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r="5"
+            fill="#ffffff"
+            stroke="#4f46e5"
+            strokeWidth="2.5"
             className="hover:r-7 cursor-pointer transition-all"
           />
         ))}
@@ -319,24 +319,24 @@ const TrendDashboard = () => {
         {/* Target Reference Line */}
         {targetRef && (
           <g>
-            <line 
-              x1={margin.left} 
-              y1={targetRef.y} 
-              x2={width - margin.right} 
-              y2={targetRef.y} 
-              stroke="#ef4444" 
-              strokeWidth="2" 
-              strokeDasharray="5 5" 
+            <line
+              x1={margin.left}
+              y1={targetRef.y}
+              x2={width - margin.right}
+              y2={targetRef.y}
+              stroke="#ef4444"
+              strokeWidth="2"
+              strokeDasharray="5 5"
             />
-            <circle 
-              cx={targetRef.x} 
-              cy={targetRef.y} 
-              r="6" 
-              fill="#ef4444" 
+            <circle
+              cx={targetRef.x}
+              cy={targetRef.y}
+              r="6"
+              fill="#ef4444"
             />
-            <text 
-              x={targetRef.x + 8} 
-              y={targetRef.y - 6} 
+            <text
+              x={targetRef.x + 8}
+              y={targetRef.y - 6}
               className="text-[9px] font-extrabold fill-rose-600 bg-white"
             >
               SBTi Target ({targetRef.value})
@@ -347,54 +347,54 @@ const TrendDashboard = () => {
         {/* Forecast Baseline Line */}
         {forecast.status === 'ok' && (
           <>
-            <line 
-              x1={lastHist.x} 
-              y1={lastHist.y} 
-              x2={forecastBaseCoord.x} 
-              y2={forecastBaseCoord.y} 
-              stroke="#f59e0b" 
-              strokeWidth="2.5" 
-              strokeDasharray="6 4" 
+            <line
+              x1={lastHist.x}
+              y1={lastHist.y}
+              x2={forecastBaseCoord.x}
+              y2={forecastBaseCoord.y}
+              stroke="#f59e0b"
+              strokeWidth="2.5"
+              strokeDasharray="6 4"
             />
-            <circle 
-              cx={forecastBaseCoord.x} 
-              cy={forecastBaseCoord.y} 
-              r="5" 
-              fill="#f59e0b" 
+            <circle
+              cx={forecastBaseCoord.x}
+              cy={forecastBaseCoord.y}
+              r="5"
+              fill="#f59e0b"
             />
-            <text 
-              x={forecastBaseCoord.x} 
-              y={forecastBaseCoord.y - 10} 
-              textAnchor="middle" 
+            <text
+              x={forecastBaseCoord.x}
+              y={forecastBaseCoord.y - 10}
+              textAnchor="middle"
               className="text-[9px] font-bold fill-amber-700 bg-white"
             >
               Proj: {Math.round(forecast.forecast_value).toLocaleString()}
             </text>
-          </g>
+          </>
         )}
 
         {/* Scenario Line */}
         {scenarioForecast && scenarioCoord && (
           <>
-            <line 
-              x1={lastHist.x} 
-              y1={lastHist.y} 
-              x2={scenarioCoord.x} 
-              y2={scenarioCoord.y} 
-              stroke="#10b981" 
-              strokeWidth="2.5" 
-              strokeDasharray="6 4" 
+            <line
+              x1={lastHist.x}
+              y1={lastHist.y}
+              x2={scenarioCoord.x}
+              y2={scenarioCoord.y}
+              stroke="#10b981"
+              strokeWidth="2.5"
+              strokeDasharray="6 4"
             />
-            <circle 
-              cx={scenarioCoord.x} 
-              cy={scenarioCoord.y} 
-              r="5" 
-              fill="#10b981" 
+            <circle
+              cx={scenarioCoord.x}
+              cy={scenarioCoord.y}
+              r="5"
+              fill="#10b981"
             />
-            <text 
-              x={scenarioCoord.x} 
-              y={scenarioCoord.y + 16} 
-              textAnchor="middle" 
+            <text
+              x={scenarioCoord.x}
+              y={scenarioCoord.y + 16}
+              textAnchor="middle"
               className="text-[9px] font-bold fill-emerald-700 bg-white"
             >
               Scenario: {Math.round(scenarioForecast.scenario_forecast_value).toLocaleString()}
@@ -406,8 +406,8 @@ const TrendDashboard = () => {
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 15 }} 
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       className="flex flex-col gap-6 w-full max-w-6xl mx-auto"
     >
@@ -417,17 +417,16 @@ const TrendDashboard = () => {
           <span className="text-xs font-black text-primary-600 uppercase tracking-wider">Predictive Transition Analytics</span>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight mt-1">BRSR Core Performance Forecasts</h1>
         </div>
-        
+
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
           {BRSR_METRICS.map(m => (
             <button
               key={m.code}
               onClick={() => setActiveMetricCode(m.code)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                activeMetricCode === m.code
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${activeMetricCode === m.code
                   ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
                   : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-800'
-              }`}
+                }`}
             >
               {m.label}
             </button>
@@ -436,21 +435,21 @@ const TrendDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* Left Column: Simulation Panels */}
         <div className="flex flex-col gap-6 lg:col-span-1">
-          
+
           {/* SBTi Target Settings */}
           <div className="glass-card p-6 flex flex-col gap-4">
             <h3 className="font-bold text-slate-800 flex items-center gap-2 text-base">
               <Sliders size={18} className="text-rose-500" />
               SBTi / Carbon Targets
             </h3>
-            
+
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-xs font-semibold text-slate-500 block mb-1">Target Value ({activeMetric?.unit})</label>
-                <input 
+                <input
                   type="number"
                   placeholder="Set target figure..."
                   value={targetValue}
@@ -461,7 +460,7 @@ const TrendDashboard = () => {
 
               <div>
                 <label className="text-xs font-semibold text-slate-500 block mb-1">Target Year</label>
-                <select 
+                <select
                   value={targetYear}
                   onChange={(e) => setTargetYear(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2"
@@ -473,7 +472,7 @@ const TrendDashboard = () => {
                 </select>
               </div>
 
-              <button 
+              <button
                 onClick={fetchTrendData}
                 className="btn btn-secondary w-full border-none bg-slate-100 hover:bg-slate-200/80 font-bold text-xs py-2 mt-2"
               >
@@ -488,28 +487,26 @@ const TrendDashboard = () => {
               <Sliders size={18} className="text-primary-500" />
               Reduction Interventions
             </h3>
-            
+
             <div className="flex flex-col gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-500 block mb-1">Intervention Type</label>
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     onClick={() => setEffectType('relative_reduction')}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                      effectType === 'relative_reduction' 
-                        ? 'border-primary-500 text-primary-700 bg-primary-50/50' 
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${effectType === 'relative_reduction'
+                        ? 'border-primary-500 text-primary-700 bg-primary-50/50'
                         : 'border-slate-200 text-slate-600 bg-white'
-                    }`}
+                      }`}
                   >
                     Relative (%)
                   </button>
-                  <button 
+                  <button
                     onClick={() => setEffectType('absolute_reduction')}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                      effectType === 'absolute_reduction' 
-                        ? 'border-primary-500 text-primary-700 bg-primary-50/50' 
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${effectType === 'absolute_reduction'
+                        ? 'border-primary-500 text-primary-700 bg-primary-50/50'
                         : 'border-slate-200 text-slate-600 bg-white'
-                    }`}
+                      }`}
                   >
                     Absolute
                   </button>
@@ -520,12 +517,12 @@ const TrendDashboard = () => {
                 <label className="text-xs font-semibold text-slate-500 flex justify-between mb-1">
                   <span>Reduction Magnitude</span>
                   <span className="font-bold text-primary-600">
-                    {effectType === 'relative_reduction' 
-                      ? `${Math.round(effectMagnitude * 100)}%` 
+                    {effectType === 'relative_reduction'
+                      ? `${Math.round(effectMagnitude * 100)}%`
                       : `${effectMagnitude} ${activeMetric?.unit}`}
                   </span>
                 </label>
-                <input 
+                <input
                   type="range"
                   min="0.0"
                   max={effectType === 'relative_reduction' ? '1.0' : '50000'}
@@ -538,7 +535,7 @@ const TrendDashboard = () => {
 
               <div>
                 <label className="text-xs font-semibold text-slate-500 block mb-1">Applicable From Year</label>
-                <select 
+                <select
                   value={applicableFromYear}
                   onChange={(e) => setApplicableFromYear(parseInt(e.target.value))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2"
@@ -549,7 +546,7 @@ const TrendDashboard = () => {
                 </select>
               </div>
 
-              <button 
+              <button
                 onClick={handleSimulateScenario}
                 disabled={forecast.status !== 'ok' || isLoading}
                 className="btn btn-primary w-full py-2.5 font-bold shadow-lg shadow-primary-500/20"
@@ -563,7 +560,7 @@ const TrendDashboard = () => {
 
         {/* Right Columns: Chart & Insights */}
         <div className="flex flex-col gap-6 lg:col-span-2">
-          
+
           {/* Main Forecast Chart */}
           <div className="glass-card p-6 flex flex-col gap-6 h-[400px]">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -593,13 +590,13 @@ const TrendDashboard = () => {
             <div className="glass-card p-6 bg-gradient-to-br from-indigo-50/20 to-purple-50/20 border-indigo-100/50 flex flex-col gap-4 relative overflow-hidden">
               {/* Highlight background elements */}
               <div className="absolute right-0 top-0 w-32 h-32 bg-primary-200/10 rounded-full filter blur-2xl"></div>
-              
+
               <div className="flex justify-between items-center">
                 <h4 className="font-bold text-slate-800 flex items-center gap-2">
                   <Sparkles size={16} className="text-primary-600" />
                   AI Predictive Insight
                 </h4>
-                <button 
+                <button
                   onClick={handleRegenerateNarrative}
                   disabled={isNarrativeLoading}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100/50 transition-colors"
@@ -629,12 +626,12 @@ const TrendDashboard = () => {
                 <CheckCircle size={18} className="text-emerald-500" />
                 SBTi Target Compliance Progress
               </h4>
-              
+
               {(() => {
                 const projVal = forecast.forecast_value;
                 const tVal = parseFloat(targetValue);
                 const gap = projVal - tVal;
-                
+
                 const isMet = gap <= 0;
                 let scenarioMet = false;
                 let scenarioGap = 0;
@@ -657,13 +654,13 @@ const TrendDashboard = () => {
                       )}
                       <div>
                         <div className="text-sm font-bold text-slate-800">
-                          {isMet 
-                            ? "Target Achieved Under Baseline Forecast!" 
+                          {isMet
+                            ? "Target Achieved Under Baseline Forecast!"
                             : `Target Violation Warning: Projected shortfall of ${Math.round(gap).toLocaleString()} ${activeMetric?.unit}`}
                         </div>
                         <div className="text-xs text-slate-500 mt-0.5">
-                          {isMet 
-                            ? "The current trajectory successfully hits the declared ESG targets." 
+                          {isMet
+                            ? "The current trajectory successfully hits the declared ESG targets."
                             : "Additional decarbonization interventions are required to meet the carbon limit."}
                         </div>
                       </div>
@@ -682,13 +679,13 @@ const TrendDashboard = () => {
                         )}
                         <div>
                           <div className="text-sm font-bold text-slate-800">
-                            {scenarioMet 
-                              ? "Scenario Intervention Successfully Bridged the Target Gap!" 
+                            {scenarioMet
+                              ? "Scenario Intervention Successfully Bridged the Target Gap!"
                               : `Scenario Shortfall: Remains ${Math.round(scenarioGap).toLocaleString()} ${activeMetric?.unit} above target.`}
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">
-                            {scenarioMet 
-                              ? `The simulated ${scenarioForecast.scenario_name} offsets the carbon overshoot.` 
+                            {scenarioMet
+                              ? `The simulated ${scenarioForecast.scenario_name} offsets the carbon overshoot.`
                               : "Increase the reduction slider to completely bridge the gap."}
                           </div>
                         </div>
