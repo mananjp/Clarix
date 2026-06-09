@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, TrendingUp, CheckCircle, FileText, BarChart2, MoreVertical, X, Sparkles, Check, Trash2, Loader } from 'lucide-react';
+import { Plus, TrendingUp, CheckCircle, FileText, BarChart2, MoreVertical, X, Sparkles, Check, Trash2, Loader, ArrowRight, ShieldCheck, Briefcase, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import client from '../api/client';
 import { useProjects } from '../context/ProjectContext';
@@ -9,23 +9,23 @@ const containerVariants = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
-    transition: { staggerChildren: 0.1 }
+    transition: { staggerChildren: 0.1, delayChildren: 0.1 }
   }
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 30 } }
 };
 
 const Dashboard = () => {
-  const { projects, isLoadingProjects: loading, fetchProjects } = useProjects();
+  const { projects, isLoadingProjects: loading, fetchProjects, selectedProjectId, selectProject } = useProjects();
   const [showModal, setShowModal] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingProjectId, setDeletingProjectId] = useState(null);
 
-  // New Project Form State
-  const [newProject, setNewProject] = useState({
+  const [projectForm, setProjectForm] = useState({
     name: '',
     disclosure_type: 'periodic',
     reporting_period_start: '2025-01-01',
@@ -36,33 +36,49 @@ const Dashboard = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await client.post('/projects', newProject);
+      if (editingProject) {
+        await client.patch(`/projects/${editingProject.id}`, projectForm);
+      } else {
+        await client.post('/projects', projectForm);
+      }
       setShowModal(false);
-      setNewProject({
+      setEditingProject(null);
+      setProjectForm({
         name: '',
         disclosure_type: 'periodic',
         reporting_period_start: '2025-01-01',
         reporting_period_end: '2025-12-31'
       });
-      fetchProjects(); // Refresh the list
+      fetchProjects();
     } catch (error) {
-      console.error("Failed to create project", error);
-      alert("Failed to create project.");
+      console.error("Failed to save project", error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleEditClick = (project, e) => {
+    e.stopPropagation();
+    setEditingProject(project);
+    setProjectForm({
+      name: project.name,
+      disclosure_type: project.disclosure_type,
+      reporting_period_start: project.reporting_period_start,
+      reporting_period_end: project.reporting_period_end
+    });
+    setShowModal(true);
+  };
+
   const handleDeleteProject = async (projectId, e) => {
     e.stopPropagation();
-    if (window.confirm("Are you sure you want to delete this project? This will permanently delete all associated documents and AI compliance drafts.")) {
+    if (window.confirm("Are you sure you want to delete this project? This cannot be undone.")) {
       setDeletingProjectId(projectId);
       try {
         await client.delete(`/projects/${projectId}`);
+        if (selectedProjectId === projectId) selectProject(null);
         await fetchProjects();
       } catch (error) {
         console.error("Failed to delete project", error);
-        alert("Failed to delete project.");
       } finally {
         setDeletingProjectId(null);
       }
@@ -71,252 +87,305 @@ const Dashboard = () => {
 
   const documentCount = projects.reduce((acc, p) => acc + p.document_count, 0);
   const completedProjects = projects.filter(p => p.status === 'Completed').length;
-  const avgProgress = projects.length > 0 
+  const avgProgress = projects.length > 0
     ? Math.round(projects.reduce((acc, p) => acc + p.progress, 0) / projects.length)
     : 0;
 
   const kpis = [
-    { label: 'Active Projects', value: projects.length.toString(), icon: TrendingUp, statusIcon: Sparkles, status: 'Live Workspace', color: 'text-primary-600', bg: 'bg-primary-50' },
-    { label: 'Completed Reports', value: completedProjects.toString(), icon: CheckCircle, statusIcon: Check, status: 'Fully Audited', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Ingested Documents', value: documentCount.toString(), icon: FileText, statusIcon: Check, status: 'OCR & Chunked', color: 'text-accent-purple', bg: 'bg-purple-50' },
-    { label: 'Avg. Audit Progress', value: `${avgProgress}%`, icon: BarChart2, statusIcon: Sparkles, status: 'Disclosure-ready', color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Active Projects', value: projects.length, icon: Briefcase, bg: 'bg-indigo-50', color: 'text-indigo-600' },
+    { label: 'Completed Reports', value: completedProjects, icon: CheckCircle, bg: 'bg-emerald-50', color: 'text-emerald-600' },
+    { label: 'Total Documents', value: documentCount, icon: FileText, bg: 'bg-amber-50', color: 'text-amber-600' },
+    { label: 'Average Progress', value: `${avgProgress}%`, icon: BarChart2, bg: 'bg-blue-50', color: 'text-blue-600' },
   ];
 
   return (
-    <div className="flex flex-col gap-8 w-full relative">
+    <div className="flex flex-col gap-10 w-full pb-20 font-sans">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Compliance Dashboard</h1>
-          <p className="text-slate-500 mt-1 font-medium">Monitor financial product disclosures and entity PAI statements.</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Dashboard</h1>
+          <p className="text-slate-500 mt-2 font-semibold">Manage your compliance reporting projects and documents.</p>
         </div>
-        <motion.button 
-          whileHover={{ scale: 1.02 }}
+
+        <motion.button
           whileTap={{ scale: 0.98 }}
           onClick={() => setShowModal(true)}
-          className="btn btn-primary shadow-primary-500/30"
+          className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-base font-bold shadow-xl shadow-slate-900/10 flex items-center gap-2"
         >
-          <Plus size={18} />
+          <Plus size={20} strokeWidth={2.5} />
           <span>New Project</span>
         </motion.button>
-      </div>
+      </header>
 
-      {/* KPI Grid */}
-      <motion.div 
+      {/* KPI Section */}
+      <motion.section
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6"
       >
         {kpis.map((kpi, idx) => (
-          <motion.div key={idx} variants={itemVariants} className="glass-card p-6 flex flex-col gap-4 relative overflow-hidden group">
-            <div className={`absolute -right-6 -top-6 w-24 h-24 ${kpi.bg} rounded-full blur-2xl opacity-50 group-hover:scale-150 transition-transform duration-500`}></div>
-            <div className="flex items-start justify-between relative z-10">
-              <span className="text-sm font-semibold text-slate-500">{kpi.label}</span>
-              <div className={`w-8 h-8 rounded-lg ${kpi.bg} ${kpi.color} flex items-center justify-center`}>
-                <kpi.icon size={18} strokeWidth={2.5} />
+          <motion.div key={idx} variants={itemVariants} className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm shadow-slate-200/50">
+            <div className="flex items-center gap-5">
+              <div className={`w-14 h-14 rounded-2xl ${kpi.bg} ${kpi.color} flex items-center justify-center shrink-0`}>
+                <kpi.icon size={28} strokeWidth={2} />
               </div>
-            </div>
-            <div className="relative z-10">
-              <span className="text-3xl font-black text-slate-800">{kpi.value}</span>
-            </div>
-            <div className="mt-auto pt-2 relative z-10 flex items-center gap-1.5">
-              <kpi.statusIcon size={12} className={kpi.color} strokeWidth={3} />
-              <span className={`text-xs font-bold ${kpi.color}`}>{kpi.status}</span>
+              <div>
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">{kpi.label}</p>
+                <p className="text-3xl font-black text-slate-900 mt-0.5">{kpi.value}</p>
+              </div>
             </div>
           </motion.div>
         ))}
-      </motion.div>
+      </motion.section>
 
-      {/* Projects List */}
-      <div className="flex flex-col gap-4">
-        <h2 className="text-xl font-bold text-slate-800">Recent Projects</h2>
-        
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-            <div className="text-slate-500 font-bold">Loading your active projects...</div>
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="lg:col-span-8 space-y-6">
+          <div className="flex justify-between items-center px-2">
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Active Projects</h2>
+            <div className="text-sm font-bold text-slate-400 uppercase tracking-widest">{projects.length} Total</div>
           </div>
-        ) : projects.length === 0 ? (
-          <div className="text-center py-12 text-slate-500 font-medium glass-card">No projects found. Click "New Project" to start.</div>
-        ) : (
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            animate="show"
-            className="grid grid-cols-1 lg:grid-cols-2 gap-6"
-          >
-            {projects.map(p => (
-              <motion.div 
-                variants={itemVariants}
-                key={p.id} 
-                className={`glass-card p-6 flex flex-col gap-5 group cursor-pointer relative overflow-hidden transition-all ${deletingProjectId === p.id ? 'opacity-60 pointer-events-none scale-[0.98]' : ''} ${p.status === 'Validating' ? 'ring-2 ring-amber-400/50 shadow-[0_0_15px_rgba(251,191,36,0.15)]' : ''}`}
+
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-32 bg-white rounded-[32px] border border-slate-100">
+              <Loader size={32} className="animate-spin text-slate-200 mb-4" />
+              <span className="text-slate-400 font-bold">Loading projects...</span>
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="text-center py-32 px-8 bg-white border-2 border-dashed border-slate-100 rounded-[32px]">
+              <Sparkles size={48} className="mx-auto text-slate-200 mb-6" />
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Ready to start?</h3>
+              <p className="text-slate-500 max-w-xs mx-auto mb-10 leading-relaxed">
+                Create your first project to start tracking your compliance documents and reporting progress.
+              </p>
+              <button
+                onClick={() => setShowModal(true)}
+                className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-base font-bold shadow-lg shadow-slate-900/10"
               >
-                {deletingProjectId === p.id && (
-                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 backdrop-blur-[2px]">
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader size={24} className="animate-spin text-rose-500" />
-                      <span className="text-xs font-bold text-rose-600">Deleting...</span>
+                Create First Project
+              </button>
+            </div>
+          ) : (
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="show"
+              className="space-y-4"
+            >
+              {projects.map(p => (
+                <motion.div
+                  variants={itemVariants}
+                  key={p.id}
+                  onClick={() => {
+                    selectProject(p.id);
+                    window.location.href = `/matrix?projectId=${p.id}`;
+                  }}
+                  className={`bg-white border border-slate-100 p-8 rounded-[32px] hover:border-slate-300 transition-all cursor-pointer flex flex-col md:flex-row justify-between items-start md:items-center gap-8 ${selectedProjectId === p.id ? 'ring-2 ring-slate-900 ring-offset-2' : 'shadow-sm shadow-slate-200/50'}`}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-4 mb-3">
+                      <h3 className="text-2xl font-bold text-slate-900 tracking-tight">
+                        {p.name}
+                      </h3>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${p.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'}`}>
+                        {p.status}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-6 text-sm font-bold text-slate-400">
+                      <div className="flex items-center gap-2">
+                        <FileText size={16} /> {p.document_count} Documents
+                      </div>
+                      <div className="w-1 h-1 bg-slate-200 rounded-full"></div>
+                      <div className="uppercase tracking-widest text-xs">{p.disclosure_type}</div>
                     </div>
                   </div>
-                )}
-                <div className="flex justify-between items-start gap-4 relative z-10">
-                  <div>
-                    <h3 className="font-bold text-lg text-slate-800 group-hover:text-primary-600 transition-colors">{p.name}</h3>
-                    <p className="text-sm font-medium text-slate-500 mt-1">{p.disclosure_type}</p>
+
+                  <div className="w-full md:w-56">
+                    <div className="flex justify-between items-end mb-2 px-1">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Progress</span>
+                      <span className="text-base font-black text-slate-900">{p.progress}%</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${p.progress}%` }}
+                        transition={{ duration: 1, ease: "easeOut" }}
+                        className={`h-full ${p.progress === 100 ? 'bg-emerald-500' : 'bg-slate-900'}`}
+                      />
+                    </div>
                   </div>
-                  <button 
-                    onClick={(e) => handleDeleteProject(p.id, e)}
-                    disabled={deletingProjectId === p.id}
-                    className="text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-rose-50 transition-colors disabled:opacity-50"
-                    title="Delete Project"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-                
-                <div className="flex flex-col gap-2">
-                  <div className="flex justify-between text-xs font-bold text-slate-500">
-                    <span>{p.progress}% Completed</span>
-                    <span>{p.document_count} Documents</span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => handleEditClick(p, e)}
+                      className="p-3 bg-slate-50 text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-all rounded-xl"
+                    >
+                      <Edit3 size={18} />
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteProject(p.id, e)}
+                      className="p-3 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all rounded-xl"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${p.progress}%` }}
-                      transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
-                      className={`h-full rounded-full ${p.progress === 100 ? 'bg-emerald-500' : 'bg-primary-500'}`}
-                    />
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </div>
+
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-slate-900 p-10 rounded-[32px] text-white shadow-2xl shadow-slate-900/20">
+            <h3 className="text-xl font-bold mb-4">Need help?</h3>
+            <p className="text-slate-400 font-medium leading-relaxed mb-8">
+              Explore our comprehensive guide on how to manage compliance disclosures and regulatory reporting.
+            </p>
+            <button className="w-full py-4 bg-white text-slate-900 rounded-2xl font-bold hover:bg-slate-50 transition-all shadow-lg">
+              Open Documentation
+            </button>
+          </div>
+
+          <div className="bg-white border border-slate-100 rounded-[32px] overflow-hidden shadow-sm shadow-slate-200/50">
+            <div className="p-8 border-b border-slate-50">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">System Health</h3>
+            </div>
+            <div className="p-8 space-y-6">
+              {[
+                { name: 'Analysis Engine', status: 'Healthy', color: 'bg-emerald-500' },
+                { name: 'Document Ingestion', status: 'Ready', color: 'bg-emerald-500' },
+                { name: 'Database Connector', status: 'Active', color: 'bg-indigo-500' },
+              ].map((s, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-600">{s.name}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{s.status}</span>
+                    <div className={`w-2 h-2 rounded-full ${s.color} animate-pulse`}></div>
                   </div>
                 </div>
-                
-                <div className="flex justify-between items-center mt-2 pt-4 border-t border-slate-100/50">
-                  <span className="text-xs font-medium text-slate-400">Period: {p.reporting_period_start} to {p.reporting_period_end}</span>
-                  <span className={`badge flex items-center gap-1.5 ${p.status === 'Completed' ? 'badge-success' : p.status === 'Validating' ? 'badge-warning animate-pulse' : 'bg-indigo-50 text-indigo-700'}`}>
-                    {p.status === 'Validating' && <Loader size={12} className="animate-spin" />}
-                    {p.status}
-                  </span>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        )}
+              ))}
+            </div>
+            <div className="px-8 py-6 bg-slate-50 text-center">
+              <span className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.3em]">All systems operational</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* New Project Modal */}
+      {/* Simplified Project Modal */}
       {createPortal(
         <AnimatePresence>
           {showModal && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
-            >
-              <motion.div 
-                initial={{ scale: 0.95, y: 20 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.95, y: 20 }}
-                className="glass-card rounded-3xl p-8 w-full max-w-md shadow-2xl relative overflow-hidden"
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/20 backdrop-blur-md">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.98, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98, y: 20 }}
+                className="bg-white rounded-[40px] p-12 w-full max-w-xl shadow-2xl shadow-slate-950/10"
               >
-                {/* Decorative blob */}
-                <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary-400 rounded-full blur-[80px] opacity-20 pointer-events-none"></div>
-
-                <div className="flex justify-between items-start mb-8 relative z-10">
+                <div className="flex justify-between items-start mb-10">
                   <div>
-                    <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">New Project</h3>
-                    <p className="text-slate-500 font-medium text-sm mt-1">Configure your reporting workspace</p>
+                    <h3 className="text-3xl font-black text-slate-900 tracking-tight">
+                      {editingProject ? 'Edit Project' : 'New Project'}
+                    </h3>
+                    <p className="text-slate-500 font-medium mt-2">
+                      {editingProject ? 'Update your project settings.' : 'Set up a new reporting workspace.'}
+                    </p>
                   </div>
-                  <button 
-                    onClick={() => setShowModal(false)}
-                    className="text-slate-400 hover:text-slate-800 transition-colors p-2 rounded-xl hover:bg-slate-100 bg-white shadow-sm border border-slate-100"
+                  <button
+                    onClick={() => {
+                      setShowModal(false);
+                      setEditingProject(null);
+                    }}
+                    className="p-3 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-2xl transition-all"
                   >
-                    <X size={20} />
+                    <X size={24} />
                   </button>
                 </div>
 
-                <form onSubmit={handleCreateProject} className="flex flex-col gap-5 relative z-10">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1.5">Project Name</label>
+                <form onSubmit={handleCreateProject} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 ml-1">Project Name</label>
                     <input
                       type="text"
                       required
-                      value={newProject.name}
-                      onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                      className="form-input py-3 text-base"
-                      placeholder="e.g. Global Equity Fund 2026"
+                      value={projectForm.name}
+                      onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
+                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[24px] text-base text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-900 focus:bg-white transition-all shadow-sm"
+                      placeholder="e.g. 2025 Sustainability Report"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-1.5">Disclosure Type</label>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 ml-1">Reporting Framework</label>
                     <select
-                      value={newProject.disclosure_type}
-                      onChange={(e) => setNewProject({ ...newProject, disclosure_type: e.target.value })}
-                      className="form-input py-3 text-base"
+                      value={projectForm.disclosure_type}
+                      onChange={(e) => setProjectForm({ ...projectForm, disclosure_type: e.target.value })}
+                      className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[24px] text-base text-slate-900 focus:outline-none focus:border-slate-900 focus:bg-white transition-all shadow-sm appearance-none"
+                      disabled={!!editingProject}
                     >
-                      <option value="periodic">Periodic Annex</option>
-                      <option value="precontractual">Precontractual</option>
-                      <option value="entity_pai">Entity PAI</option>
+                      <option value="periodic">SFDR Periodic Annex</option>
+                      <option value="precontractual">SFDR Pre-Contractual</option>
+                      <option value="entity_pai">BRSR / Entity PAI</option>
                     </select>
                   </div>
 
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Start Date</label>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700 ml-1">Start Date</label>
                       <input
                         type="date"
                         required
-                        value={newProject.reporting_period_start}
-                        onChange={(e) => setNewProject({ ...newProject, reporting_period_start: e.target.value })}
-                        className="form-input py-3 text-sm"
+                        value={projectForm.reporting_period_start}
+                        onChange={(e) => setProjectForm({ ...projectForm, reporting_period_start: e.target.value })}
+                        className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[24px] text-sm"
                       />
                     </div>
-                    <div className="flex-1">
-                      <label className="block text-sm font-bold text-slate-700 mb-1.5">End Date</label>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700 ml-1">End Date</label>
                       <input
                         type="date"
                         required
-                        value={newProject.reporting_period_end}
-                        onChange={(e) => setNewProject({ ...newProject, reporting_period_end: e.target.value })}
-                        className="form-input py-3 text-sm"
+                        value={projectForm.reporting_period_end}
+                        onChange={(e) => setProjectForm({ ...projectForm, reporting_period_end: e.target.value })}
+                        className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[24px] text-sm"
                       />
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-3 mt-6">
+                  <div className="flex gap-4 pt-10">
                     <button
                       type="button"
-                      onClick={() => setShowModal(false)}
-                      className="px-5 py-3 text-sm font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                      onClick={() => {
+                        setShowModal(false);
+                        setEditingProject(null);
+                      }}
+                      className="flex-1 py-5 text-sm font-bold text-slate-400 hover:text-slate-900 transition-all"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="btn btn-primary px-6 py-3 shadow-primary-500/30 disabled:opacity-70"
+                      className="flex-[2] py-5 bg-slate-900 text-white rounded-[24px] text-base font-bold shadow-xl shadow-slate-900/10 disabled:opacity-50"
                     >
-                      {isSubmitting ? (
-                        <span className="flex items-center gap-2">
-                          <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Creating...
-                        </span>
-                      ) : (
-                        <span className="font-bold">Create Workspace</span>
-                      )}
+                      {isSubmitting ? 'Saving...' : (editingProject ? 'Save Changes' : 'Create Project')}
                     </button>
                   </div>
                 </form>
               </motion.div>
-            </motion.div>
+            </div>
           )}
         </AnimatePresence>,
         document.body
       )}
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Outfit', sans-serif; }
+      `}</style>
     </div>
   );
 };
