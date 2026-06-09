@@ -5,31 +5,38 @@ import { motion } from 'framer-motion';
 
 const AuthLayout = () => {
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background relative items-center justify-center">
-      {/* Decorative background gradients */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary-200/40 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-accent-indigo/10 rounded-full blur-[150px] pointer-events-none"></div>
-
-      <div className="w-full max-w-md p-6 relative z-10 flex flex-col gap-6">
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
+    <div className="min-h-screen w-screen overflow-y-auto bg-slate-50 font-sans text-slate-900 flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-md flex flex-col gap-10">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center gap-3"
+          transition={{ duration: 0.4 }}
+          className="flex flex-col items-center gap-4"
         >
-          <div className="w-14 h-14 bg-gradient-to-br from-primary-600 to-accent-indigo rounded-2xl flex items-center justify-center text-white shadow-xl shadow-primary-500/30">
-            <ShieldAlert size={28} strokeWidth={2.5} />
+          <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-slate-950/20">
+            <ShieldAlert size={28} strokeWidth={2} />
           </div>
-          <span className="font-extrabold text-2xl text-slate-800 tracking-tight">SFDR<span className="text-primary-600 font-black">.</span>AI</span>
+          <h1 className="text-3xl font-black tracking-tight">Clarix</h1>
         </motion.div>
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1, type: "spring", stiffness: 300, damping: 25 }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.4 }}
+          className="bg-white rounded-[32px] p-10 shadow-xl shadow-slate-200/50 border border-slate-100"
         >
           <Outlet />
         </motion.div>
+
+        <div className="text-center">
+          <p className="text-sm font-medium text-slate-400">© 2026 Clarix Compliance platform</p>
+        </div>
       </div>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Outfit', sans-serif; }
+      `}</style>
     </div>
   );
 };

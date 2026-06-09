@@ -8,6 +8,7 @@ class UserBase(BaseModel):
     email: str
     role: Optional[str] = "Reviewer"
     active: Optional[bool] = True
+    organization_id: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -77,6 +78,12 @@ class ReportingProjectBase(BaseModel):
 class ReportingProjectCreate(ReportingProjectBase):
     product_id: Optional[str] = None
     organization_id: str = "default_org"
+
+class ReportingProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    reporting_period_start: Optional[date] = None
+    reporting_period_end: Optional[date] = None
 
 class ReportingProject(ReportingProjectBase):
     id: str

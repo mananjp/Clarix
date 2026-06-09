@@ -27,14 +27,14 @@ import Settings from './pages/Settings';
 
 const ProtectedRoute = () => {
   const { currentUser, loading } = useAuth();
-  
+
   if (loading) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 text-slate-500 gap-4">
       <div className="w-12 h-12 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
       <span className="font-bold">Loading workspace...</span>
     </div>
   );
-  
+
   return currentUser ? (
     <ProjectProvider>
       <Outlet />
@@ -42,37 +42,41 @@ const ProtectedRoute = () => {
   ) : <Navigate to="/login" replace />;
 };
 
+import ErrorBoundary from './components/ErrorBoundary';
+
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public Landing Page */}
-          <Route path="/" element={<Home />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public Landing Page */}
+            <Route path="/" element={<Home />} />
 
-          {/* Public Auth Routes */}
-          <Route element={<AuthLayout />}>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-          </Route>
-
-          {/* Protected App Routes */}
-          <Route element={<ProtectedRoute />}>
-            <Route element={<MainLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/matrix" element={<RequirementMatrix />} />
-              <Route path="/reviewer" element={<ReviewerDesk />} />
-              <Route path="/regulatory-impact" element={<RegulatoryImpactSimulator />} />
-              <Route path="/auditor" element={<AuditorPortal />} />
-              <Route path="/trends" element={<TrendDashboard />} />
-              <Route path="/audit" element={<AuditTrail />} />
-              <Route path="/exports" element={<AuditExport />} />
-              <Route path="/settings" element={<Settings />} />
+            {/* Public Auth Routes */}
+            <Route element={<AuthLayout />}>
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
             </Route>
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+
+            {/* Protected App Routes */}
+            <Route element={<ProtectedRoute />}>
+              <Route element={<MainLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/matrix" element={<RequirementMatrix />} />
+                <Route path="/reviewer" element={<ReviewerDesk />} />
+                <Route path="/regulatory-impact" element={<RegulatoryImpactSimulator />} />
+                <Route path="/auditor" element={<AuditorPortal />} />
+                <Route path="/trends" element={<TrendDashboard />} />
+                <Route path="/audit" element={<AuditTrail />} />
+                <Route path="/exports" element={<AuditExport />} />
+                <Route path="/settings" element={<Settings />} />
+              </Route>
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

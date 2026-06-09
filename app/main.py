@@ -56,6 +56,67 @@ def on_startup():
         print("Database successfully verified/seeded on startup.")
     except Exception as e:
         print(f"Error seeding database on startup: {e}")
+    
+    # Integrated Maintenance & Resilience Engine
+    try:
+        db = next(get_db())
+        
+        # 0. Ensure default organization exists for multi-tenant anchoring
+        default_org = db.query(Organization).filter(Organization.id == "default_org").first()
+        if not default_org:
+            db.add(Organization(id="default_org", name="Clarix Default Organization", type="System Root"))
+            db.commit()
+            print("Seeded default_org for system stability.")
+
+        # 1. Back-fill organizations for users
+        users_without_org = db.query(User).filter((User.organization_id == None) | (User.organization_id == "")).all()
+        for u in users_without_org:
+            u.organization_id = "default_org"
+            
+        # 2. Repair orphaned projects and back-fill baseline answers
+        projects = db.query(ReportingProject).all()
+        backfilled_count = 0
+        for proj in projects:
+            if not proj.organization_id:
+                proj.organization_id = "default_org"
+
+            fields = db.query(RegulationField).filter(
+                RegulationField.disclosure_type == proj.disclosure_type,
+                RegulationField.framework == "SFDR"
+            ).all()
+            for field in fields:
+                exists = db.query(FieldAnswer).filter(
+                    FieldAnswer.project_id == proj.id,
+                    FieldAnswer.regulation_field_id == field.id
+                ).first()
+                if not exists:
+                    db.add(FieldAnswer(
+                        id=str(uuid.uuid4()),
+                        project_id=proj.id,
+                        regulation_field_id=field.id,
+                        status=AnswerStatus.MISSING.value,
+                        answer_text="",
+                        version_no=1,
+                        is_latest=True,
+                        regulation_version=field.regulation_version
+                    ))
+                    backfilled_count += 1
+        
+        db.commit()
+        db.close()
+        print(f"System maintenance complete. Synchronized {backfilled_count} answering units across multi-tenant boundaries.")
+    except Exception as e:
+        print(f"Maintenance engine warning: {e}")
+
+# Global Resilience Handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    import logging
+    logging.error(f"SYSTEM_STABILITY_ALERT: {str(exc)}", exc_info=True)
+    return HTMLResponse(
+        status_code=500,
+        content=f"Internal Server Error: {str(exc)}" if app.debug else "A critical error occurred. The system is still stable."
+    )
 
 # CORS middleware config
 app.add_middleware(
@@ -66,6 +127,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Auth Endpoints ---
 
 # --- Auth Endpoints ---
 
@@ -84,7 +146,8 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
         email=user_in.email,
         hashed_password=get_password_hash(user_in.password),
         role=user_in.role,
-        active=user_in.active
+        active=user_in.active,
+        organization_id="default_org"
     )
     db.add(db_user)
     db.commit()
@@ -138,8 +201,12 @@ def get_products(db: Session = Depends(get_db), current_user: User = Depends(get
 
 @app.get("/api/projects")
 def get_projects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Retrieve all active reporting projects with document counts and overall completion progress."""
-    projects = db.query(ReportingProject).all()
+    """Retrieve reporting projects for the current user's organization strictly."""
+    if not current_user.organization_id:
+        # Emergency fallback for unassociated users
+        return []
+
+    projects = db.query(ReportingProject).filter(ReportingProject.organization_id == current_user.organization_id).all()
     results = []
     
     for proj in projects:
@@ -151,7 +218,6 @@ def get_projects(db: Session = Depends(get_db), current_user: User = Depends(get
             FieldAnswer.is_latest == True
         ).count()
         
-        # Calculate completion rate
         progress = 0
         if fields_count > 0:
             progress = int((approved_count / fields_count) * 100)
@@ -160,10 +226,10 @@ def get_projects(db: Session = Depends(get_db), current_user: User = Depends(get
             "id": proj.id,
             "name": proj.name,
             "disclosure_type": proj.disclosure_type,
-            "reporting_period_start": proj.reporting_period_start.isoformat(),
-            "reporting_period_end": proj.reporting_period_end.isoformat(),
+            "reporting_period_start": proj.reporting_period_start.isoformat() if proj.reporting_period_start else None,
+            "reporting_period_end": proj.reporting_period_end.isoformat() if proj.reporting_period_end else None,
             "status": proj.status,
-            "created_at": proj.created_at.isoformat(),
+            "created_at": proj.created_at.isoformat() if proj.created_at else None,
             "document_count": doc_count,
             "progress": progress,
             "product_name": proj.product.name if proj.product else "Entity-Level PAI"
@@ -173,10 +239,10 @@ def get_projects(db: Session = Depends(get_db), current_user: User = Depends(get
 
 @app.post("/api/projects", response_model=RPResponse)
 def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Create a new compliance reporting project."""
+    """Create a new compliance reporting project and isolated within org."""
     project_id = str(uuid.uuid4())
+    org_id = current_user.organization_id or "default_org"
     
-    # Check that product exists if product_id is provided
     if project_in.product_id:
         prod = db.query(Product).filter(Product.id == project_in.product_id).first()
         if not prod:
@@ -184,7 +250,7 @@ def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get
             
     db_project = ReportingProject(
         id=project_id,
-        organization_id=project_in.organization_id,
+        organization_id=org_id,
         product_id=project_in.product_id,
         name=project_in.name,
         disclosure_type=project_in.disclosure_type,
@@ -192,10 +258,9 @@ def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get
         reporting_period_end=project_in.reporting_period_end,
         status=ProjectStatus.DRAFT.value
     )
-    
     db.add(db_project)
     
-    # Create empty baseline answers for all mapped regulation fields (SFDR only for project creation)
+    # Create empty baseline answers
     fields = db.query(RegulationField).filter(
         RegulationField.disclosure_type == project_in.disclosure_type,
         RegulationField.framework == "SFDR"
@@ -207,7 +272,6 @@ def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get
             regulation_field_id=field.id,
             status=AnswerStatus.MISSING.value,
             answer_text="",
-            answer_json=None,
             version_no=1,
             is_latest=True,
             regulation_version=field.regulation_version
@@ -217,28 +281,63 @@ def create_project(project_in: ReportingProjectCreate, db: Session = Depends(get
     db.commit()
     db.refresh(db_project)
     
-    # Audit log entry
     audit = AuditLog(
         id=str(uuid.uuid4()),
         entity_type="project",
         entity_id=project_id,
         action="create",
-        actor_id="system",
+        actor_id=current_user.id,
         project_id=project_id,
         payload={"name": db_project.name}
     )
     db.add(audit)
     db.commit()
-    
     return db_project
+
+
+@app.patch("/api/projects/{project_id}", response_model=RPResponse)
+def update_project(project_id: str, update_in: ReportingProjectUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update an existing compliance reporting project."""
+    project = db.query(ReportingProject).filter(
+        ReportingProject.id == project_id,
+        ReportingProject.organization_id == (current_user.organization_id or "default_org")
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found or access denied.")
+
+    update_data = update_in.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(project, field, value)
+
+    db.commit()
+    db.refresh(project)
+    
+    # Audit trail
+    audit = AuditLog(
+        id=str(uuid.uuid4()),
+        entity_type="project",
+        entity_id=project_id,
+        action="update",
+        actor_id=current_user.id,
+        project_id=project_id,
+        payload=update_data
+    )
+    db.add(audit)
+    db.commit()
+    
+    return project
 
 
 @app.delete("/api/projects/{project_id}")
 def delete_project(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Delete a reporting project and all associated cascades."""
-    project = db.query(ReportingProject).filter(ReportingProject.id == project_id).first()
+    """Delete a reporting project and all associated cascades with ownership check."""
+    project = db.query(ReportingProject).filter(
+        ReportingProject.id == project_id,
+        ReportingProject.organization_id == (current_user.organization_id or "default_org")
+    ).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found.")
+        raise HTTPException(status_code=404, detail="Project not found or access denied.")
+        
     db.delete(project)
     db.commit()
     return {"message": "Project deleted successfully"}
@@ -1569,27 +1668,36 @@ async def get_company_trend_narrative(
     return {"narrative": res.get("narrative")}
 
 
-# --- Serve Static UI files ---
-
 # Serve CSS, JS, and Assets
 static_dir = os.path.join(BASE_DIR, "app", "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    
+    # Ensure assets are served at /assets for the build links in index.html
+    assets_dir = os.path.join(static_dir, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-# Catch-all endpoint to serve the frontend SPA
-@app.get("/", response_class=HTMLResponse)
-def serve_index():
+# Catch-all: serve the frontend SPA for ALL non-API, non-static routes
+# This enables React Router client-side navigation to work on page reload
+@app.get("/{path:path}", response_class=HTMLResponse)
+def serve_index(path: str = ""):
     index_path = os.path.join(BASE_DIR, "app", "static", "index.html")
+    headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
-            return f.read()
-    return """
+            return HTMLResponse(content=f.read(), headers=headers)
+    return HTMLResponse(content="""
     <html>
-        <head><title>Regulatory Intelligence Engine</title></head>
+        <head><title>Clarix | Regulatory Intelligence Engine</title></head>
         <body style="font-family:sans-serif; text-align:center; padding-top:100px;">
-            <h1>Regulatory Intelligence & Compliance Workflow Engine</h1>
+            <h1>Regulatory Intelligence &amp; Compliance Workflow Engine</h1>
             <p>Please build/create the static folder and index.html file to view the rich UI workspace.</p>
             <p><a href="/docs">View REST API Documentation (Swagger)</a></p>
         </body>
     </html>
-    """
+    """, headers=headers)
