@@ -18,7 +18,7 @@ from app.models import (
     WhatIfScenario, ProjectStatus, AnswerStatus, AuditorLedgerEntry, MetricSnapshot
 )
 from app.schemas import (
-    ReportingProjectCreate, ReportingProject as RPResponse,
+    ReportingProjectCreate, ReportingProjectUpdate, ReportingProject as RPResponse,
     Product as ProductResponse, MatrixItem, FieldAnswerUpdate,
     UserCreate, User as UserResponse, AuditLogResponse, Token,
     RegulationField as RegFieldResponse, LegalConsequenceDetail,
@@ -242,6 +242,38 @@ def delete_project(project_id: str, db: Session = Depends(get_db), current_user:
     db.delete(project)
     db.commit()
     return {"message": "Project deleted successfully"}
+
+
+@app.put("/api/projects/{project_id}", response_model=RPResponse)
+def update_project(project_id: str, update_in: ReportingProjectUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update an existing compliance reporting project."""
+    project = db.query(ReportingProject).filter(
+        ReportingProject.id == project_id
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    update_data = update_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(project, field, value)
+
+    db.commit()
+    db.refresh(project)
+    
+    # Audit trail
+    audit = AuditLog(
+        id=str(uuid.uuid4()),
+        entity_type="project",
+        entity_id=project_id,
+        action="update",
+        actor_id=current_user.id,
+        project_id=project_id,
+        payload=update_data
+    )
+    db.add(audit)
+    db.commit()
+    
+    return project
 
 
 @app.post("/api/projects/{project_id}/documents")
