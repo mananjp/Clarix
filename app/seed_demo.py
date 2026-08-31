@@ -17,8 +17,8 @@ import uuid
 from app.database import SessionLocal
 from app.models import (
     Organization, User, Product, ReportingProject, Document, DocumentChunk,
-    RegulationField, FieldAnswer, FieldEvidence, ValidationResult, AuditLog,
-    MetricSnapshot, GreenwashingAudit, AnswerStatus, ProjectStatus, Severity, PenaltyTier,
+    RegulationField, FieldAnswer, FieldEvidence, AuditLog,
+    MetricSnapshot, AnswerStatus, ProjectStatus,
 )
 
 from app.services.greenwashing import GreenwashingDetector
