@@ -57,7 +57,7 @@ if not SECRET_KEY:
     )
 
 # Default settings
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-oss-120b")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-oss-120b")
 SUPPORTED_MODELS = [
     "openai/gpt-oss-120b",
     "gemma2-9b-it"

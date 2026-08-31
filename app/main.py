@@ -181,6 +181,7 @@ from app.routers.cross_framework import router as cross_framework_router
 from app.routers.merkle_audit import router as merkle_audit_router
 from app.routers.intake import router as intake_router
 from app.routers.enterprise_sso import router as enterprise_sso_router
+from app.routers.matrix import router as matrix_router
 
 app.include_router(health_router)
 app.include_router(auth_router)
@@ -200,6 +201,7 @@ app.include_router(cross_framework_router)
 app.include_router(merkle_audit_router)
 app.include_router(intake_router)
 app.include_router(enterprise_sso_router)
+app.include_router(matrix_router)
 
 
 # ---------------------------------------------------------------------------
