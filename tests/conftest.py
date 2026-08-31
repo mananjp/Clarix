@@ -43,6 +43,9 @@ def _app_schema():
             s.commit()
     finally:
         s.close()
+
+    from app.limiter import limiter
+    limiter.enabled = False
     yield
     try:
         os.remove(_test_db_path)

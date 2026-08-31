@@ -1,6 +1,9 @@
+import logging
 from app.database import SessionLocal
 from app.models import RegulationField, Organization, Product, User, UserRole
 from app.auth import get_password_hash
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # SFDR Fields — fully enriched with legal consequence metadata
@@ -422,7 +425,7 @@ WHAT_IF_TEMPLATES = [
 
 
 def seed_database():
-    print("Database connection...")
+    logger.info("Verifying database seed data...")
     db = SessionLocal()
     try:
         # 1. Seed users representing distinct governance roles
@@ -447,7 +450,7 @@ def seed_database():
                     active=True
                 )
                 db.add(new_user)
-                print(f"Seeded user: {u['username']} ({u['role']})")
+                logger.info("Seeded user: %s (%s)", u["username"], u["role"])
         db.commit()
 
         # 2. Seed default organization if not exists
@@ -457,9 +460,9 @@ def seed_database():
             org = Organization(id=org_id, name="Greenfield Capital Partners Ltd", type="Asset Manager")
             db.add(org)
             db.commit()
-            print(f"Seeded organization: {org.name}")
+            logger.info("Seeded organization: %s", org.name)
         else:
-            print("Organization already exists.")
+            logger.debug("Organization already exists.")
 
         # 3. Seed default products if not exists
         prod_id = "default_prod_8"
@@ -487,9 +490,9 @@ def seed_database():
             db.add(prod9)
             
             db.commit()
-            print("Seeded default products (Article 8 and Article 9).")
+            logger.info("Seeded default products (Article 8 and Article 9).")
         else:
-            print("Products already exist.")
+            logger.debug("Products already exist.")
 
         # 4. Seed ALL regulation fields (SFDR + CSRD)
         all_fields = SFDR_FIELDS + CSRD_FIELDS
@@ -518,11 +521,11 @@ def seed_database():
                 seeded_count += 1
         
         db.commit()
-        print(f"Seeded {seeded_count} regulation fields ({len(SFDR_FIELDS)} SFDR + {len(CSRD_FIELDS)} CSRD).")
+        logger.info("Seeded %d regulation fields (%d SFDR + %d CSRD).", seeded_count, len(SFDR_FIELDS), len(CSRD_FIELDS))
         
     except Exception as e:
         db.rollback()
-        print(f"Error seeding database: {e}")
+        logger.error("Error seeding database: %s", e)
         raise e
     finally:
         db.close()

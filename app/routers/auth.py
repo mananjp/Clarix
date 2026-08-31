@@ -5,7 +5,7 @@ Auth router — registration and login.
 import uuid
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -16,12 +16,14 @@ from app.auth import (
     get_password_hash, verify_password, create_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
+from app.limiter import limiter
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
 
 @router.post("/auth/register", response_model=UserResponse)
-def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register_user(request: Request, user_in: UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""
     existing = db.query(User).filter(
         (User.username == user_in.username) | (User.email == user_in.email)
@@ -45,7 +47,8 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/token", response_model=Token)
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(
         (User.username == form_data.username) | (User.email == form_data.username)
     ).first()

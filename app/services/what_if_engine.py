@@ -1,5 +1,6 @@
 import uuid
 import json
+import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from app.models import (
@@ -8,6 +9,8 @@ from app.models import (
 from app.seed_regulations import WHAT_IF_TEMPLATES
 from app.services.generation import GenerationService
 from app.config import DEFAULT_MODEL
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Regulatory consequence knowledge base for what-if simulations
@@ -420,7 +423,7 @@ class WhatIfEngine:
                 if "triggered_obligations" in result_json and "legal_consequences" in result_json and "risk_score" in result_json:
                     return result_json
             except Exception as e:
-                print(f"Error in custom what-if LLM evaluation: {e}. Falling back to simulation.")
+                logger.warning("Error in custom what-if LLM evaluation: %s. Falling back to simulation.", e)
 
         # High-fidelity simulation fallback
         action = params.get("action", "custom_scenario")
@@ -567,7 +570,7 @@ class WhatIfEngine:
                 if "action" in result_json:
                     return result_json
             except Exception as e:
-                print(f"Error in LLM scenario parsing: {e}. Falling back to rules heuristics.")
+                logger.warning("Error in LLM scenario parsing: %s. Falling back to rules heuristics.", e)
 
         # Keyword Heuristics Parser Fallback
         text = free_text.lower()

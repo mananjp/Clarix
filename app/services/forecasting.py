@@ -1,5 +1,8 @@
 import math
+import logging
 from typing import List, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 def linear_regression(x: List[float], y: List[float]) -> tuple[float, float]:
     n = len(x)
@@ -159,7 +162,7 @@ async def generate_trend_narrative(
             
             return await loop.run_in_executor(None, call_groq)
         except Exception as e:
-            print(f"Error generating narrative with Groq: {e}. Falling back to simulation.")
+            logger.warning("Error generating narrative with Groq: %s. Falling back to simulation.", e)
 
     # High-fidelity simulation fallback
     trend_desc = forecast.get("trend_direction", "stable")
