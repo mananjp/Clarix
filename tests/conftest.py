@@ -129,7 +129,7 @@ def test_project(seeded_db):
     """Create a test project within the seeded DB."""
     project = ReportingProject(
         id="test_project",
-        organization_id="test_org",
+        organization_id="default_org",
         name="Test Compliance Project",
         disclosure_type="entity_pai",
         reporting_period_start=datetime.date(2025, 1, 1),

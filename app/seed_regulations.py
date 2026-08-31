@@ -388,6 +388,368 @@ CSRD_FIELDS = [
 ]
 
 # =============================================================================
+# SEC Climate Disclosure Rule Fields (17 CFR Part 229)
+# =============================================================================
+SEC_FIELDS = [
+    {
+        "id": "field_sec_ghg_1",
+        "framework": "SEC",
+        "disclosure_type": "entity_pai",
+        "annex_code": "17 CFR 229.1500",
+        "field_code": "SEC_GHG_SCOPE1",
+        "field_label": "GHG Scope 1 Emissions (SEC Climate Rule)",
+        "field_kind": "numeric",
+        "mandatory": True,
+        "regulation_version": "SEC Climate Rule 2024",
+        "legal_basis": "SEC Climate Disclosure Rule, 17 CFR 229.1500",
+        "penalty_tier": "High",
+        "enforcement_body": "US Securities and Exchange Commission (SEC)",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PAI_GHG_SCOPE1", "relationship": "equivalent_disclosure"},
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "equivalent_disclosure"},
+            {"framework": "ISSB", "field_code": "ISSB_S2_GHG", "relationship": "equivalent_disclosure"}
+        ],
+        "guidance": {
+            "description": "Direct GHG emissions from sources owned or controlled by the registrant, in metric tons of CO2e.",
+            "unit": "tCO2e",
+            "rule_checks": ["numeric_only", "must_have_evidence", "positive_value"]
+        }
+    },
+    {
+        "id": "field_sec_ghg_2",
+        "framework": "SEC",
+        "disclosure_type": "entity_pai",
+        "annex_code": "17 CFR 229.1500",
+        "field_code": "SEC_GHG_SCOPE2",
+        "field_label": "GHG Scope 2 Emissions (SEC Climate Rule)",
+        "field_kind": "numeric",
+        "mandatory": True,
+        "regulation_version": "SEC Climate Rule 2024",
+        "legal_basis": "SEC Climate Disclosure Rule, 17 CFR 229.1500",
+        "penalty_tier": "High",
+        "enforcement_body": "US Securities and Exchange Commission (SEC)",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PAI_GHG_SCOPE2", "relationship": "equivalent_disclosure"},
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "equivalent_disclosure"},
+            {"framework": "ISSB", "field_code": "ISSB_S2_GHG", "relationship": "equivalent_disclosure"}
+        ],
+        "guidance": {
+            "description": "Indirect emissions from purchased electricity, steam, heating, or cooling consumed by the registrant.",
+            "unit": "tCO2e",
+            "rule_checks": ["numeric_only", "must_have_evidence", "positive_value"]
+        }
+    },
+    {
+        "id": "field_sec_ghg_3",
+        "framework": "SEC",
+        "disclosure_type": "entity_pai",
+        "annex_code": "17 CFR 229.1500(c)",
+        "field_code": "SEC_GHG_SCOPE3",
+        "field_label": "GHG Scope 3 Emissions (SEC Climate Rule)",
+        "field_kind": "numeric",
+        "mandatory": False,
+        "regulation_version": "SEC Climate Rule 2024",
+        "legal_basis": "SEC Climate Disclosure Rule, 17 CFR 229.1500(c) (Scope 3 disclosure — subject to compliance timing)",
+        "penalty_tier": "Medium",
+        "enforcement_body": "US Securities and Exchange Commission (SEC)",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PAI_GHG_SCOPE3", "relationship": "equivalent_disclosure"},
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "equivalent_disclosure"},
+            {"framework": "ISSB", "field_code": "ISSB_S2_GHG", "relationship": "equivalent_disclosure"}
+        ],
+        "guidance": {
+            "description": "Indirect emissions in the value chain (upstream and downstream), including supplier and customer activities.",
+            "unit": "tCO2e",
+            "rule_checks": ["numeric_only", "must_have_evidence", "positive_value"]
+        }
+    },
+    {
+        "id": "field_sec_climate_risk",
+        "framework": "SEC",
+        "disclosure_type": "entity_pai",
+        "annex_code": "17 CFR 229.1502",
+        "field_code": "SEC_CLIMATE_RISK",
+        "field_label": "Climate-Related Risk Management (SEC Climate Rule)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "SEC Climate Rule 2024",
+        "legal_basis": "SEC Climate Disclosure Rule, 17 CFR 229.1502 (Risk Management, Strategy, Governance)",
+        "penalty_tier": "High",
+        "enforcement_body": "US Securities and Exchange Commission (SEC)",
+        "cross_references": [
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "complementary_indicator"},
+            {"framework": "ISSB", "field_code": "ISSB_S2_TRANSITION", "relationship": "equivalent_disclosure"}
+        ],
+        "guidance": {
+            "description": "Disclosure of governance, strategy, and risk management regarding climate-related risks and opportunities.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    },
+    {
+        "id": "field_sec_fin_impact",
+        "framework": "SEC",
+        "disclosure_type": "entity_pai",
+        "annex_code": "17 CFR 229.1502(d)",
+        "field_code": "SEC_FINANCIAL_IMPACT",
+        "field_label": "Financial Impact of Climate Events (SEC Climate Rule)",
+        "field_kind": "numeric",
+        "mandatory": True,
+        "regulation_version": "SEC Climate Rule 2024",
+        "legal_basis": "SEC Climate Disclosure Rule, 17 CFR 229.1502(d) (Financial statement effects)",
+        "penalty_tier": "High",
+        "enforcement_body": "US Securities and Exchange Commission (SEC)",
+        "cross_references": [
+            {"framework": "ISSB", "field_code": "ISSB_S1_GOODS_SERVICES", "relationship": "equivalent_disclosure"},
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "complementary_indicator"}
+        ],
+        "guidance": {
+            "description": "Quantified financial impact of severe weather events, natural conditions, and transition activities.",
+            "unit": "USD",
+            "rule_checks": ["numeric_only", "must_have_evidence", "positive_value"]
+        }
+    }
+]
+
+# =============================================================================
+# UK SDR (FCA PS23/16) Fields
+# =============================================================================
+UK_SDR_FIELDS = [
+    {
+        "id": "field_uksdr_label",
+        "framework": "UK SDR",
+        "disclosure_type": "periodic",
+        "annex_code": "FCA PS23/16",
+        "field_code": "UKSDR_SUSTAINABILITY_LABEL",
+        "field_label": "UK SDR Sustainability Label",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "UK SDR 2024",
+        "legal_basis": "FCA PS23/16 Sustainability Disclosure Requirements (SDR)",
+        "penalty_tier": "High",
+        "enforcement_body": "Financial Conduct Authority (FCA)",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PERIODIC_ASSET_ALLOCATION", "relationship": "equivalent_disclosure"},
+            {"framework": "EU Taxonomy", "field_code": "TAX_ALIGNMENT_PCT", "relationship": "supplementary_data"}
+        ],
+        "guidance": {
+            "description": "Designation of fund under UK SDR labels: Sustainability Improver, Sustainability Focus, Sustainability Impact, or Sustainability Mixed Goals.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    },
+    {
+        "id": "field_uksdr_ghg",
+        "framework": "UK SDR",
+        "disclosure_type": "entity_pai",
+        "annex_code": "FCA PS23/16",
+        "field_code": "UKSDR_GHG_EMISSIONS",
+        "field_label": "Sustainability Objective — GHG Metric (UK SDR)",
+        "field_kind": "numeric",
+        "mandatory": True,
+        "regulation_version": "UK SDR 2024",
+        "legal_basis": "FCA PS23/16 — product-level sustainability objective and key performance indicators",
+        "penalty_tier": "Hard",
+        "enforcement_body": "Financial Conduct Authority (FCA)",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PAI_GHG_SCOPE3", "relationship": "equivalent_disclosure"},
+            {"framework": "ISSB", "field_code": "ISSB_S2_GHG", "relationship": "equivalent_disclosure"}
+        ],
+        "guidance": {
+            "description": "GHG emissions metric used to demonstrate progress towards the sustainability objective.",
+            "unit": "tCO2e",
+            "rule_checks": ["numeric_only", "must_have_evidence", "positive_value"]
+        }
+    },
+    {
+        "id": "field_uksdr_improving",
+        "framework": "UK SDR",
+        "disclosure_type": "periodic",
+        "annex_code": "FCA PS23/16",
+        "field_code": "UKSDR_ODD_AND_FLAGSHIP",
+        "field_label": "Sustainability Improver / Impact Category",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "UK SDR 2024",
+        "legal_basis": "FCA PS23/16 — SDR labels and anti-greenwashing rule",
+        "penalty_tier": "Medium",
+        "enforcement_body": "Financial Conduct Authority (FCA)",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PERIODIC_SUSTAIN_INVEST_TARGET", "relationship": "equivalent_disclosure"},
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "complementary_indicator"}
+        ],
+        "guidance": {
+            "description": "Qualification for 'Improver' or 'Impact' SDR categories based on the scheme's sustainability objective.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    },
+    {
+        "id": "field_uksdr_anti_gw",
+        "framework": "UK SDR",
+        "disclosure_type": "periodic",
+        "annex_code": "FCA COBS 4.3.8",
+        "field_code": "UKSDR_ANTI_GREENWASHING",
+        "field_label": "Anti-Greenwashing Compliance (FCA COBS 4.3.8)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "UK SDR 2024",
+        "legal_basis": "FCA COBS 4.3.8 (Anti-Greenwashing Rule under PS23/16)",
+        "penalty_tier": "High",
+        "enforcement_body": "Financial Conduct Authority (FCA)",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PERIODIC_ASSET_ALLOCATION", "relationship": "equivalent_disclosure"},
+            {"framework": "SFDR", "field_code": "PERIODIC_SUSTAIN_INVEST_TARGET", "relationship": "supplementary_data"}
+        ],
+        "guidance": {
+            "description": "Demonstrate that any sustainability-related claims are fair, clear, and not misleading (FCA anti-greenwashing rule).",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    },
+    {
+        "id": "field_uksdr_policy",
+        "framework": "UK SDR",
+        "disclosure_type": "periodic",
+        "annex_code": "FCA PS23/16",
+        "field_code": "UKSDR_INVESTMENT_POLICY",
+        "field_label": "Sustainable Investment Policy (UK SDR)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "UK SDR 2024",
+        "legal_basis": "FCA PS23/16 — investment policy and stewardship disclosures for SDR-labelled products",
+        "penalty_tier": "Medium",
+        "enforcement_body": "Financial Conduct Authority (FCA)",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PERIODIC_SUSTAIN_INVEST_TARGET", "relationship": "equivalent_disclosure"},
+            {"framework": "ISSB", "field_code": "ISSB_S2_TARGETS", "relationship": "complementary_indicator"}
+        ],
+        "guidance": {
+            "description": "Description of the investment policy and how it contributes to the stated sustainability objective.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    }
+]
+
+# =============================================================================
+# ISSB S1 / S2 Standards Fields
+# =============================================================================
+ISSB_FIELDS = [
+    {
+        "id": "field_issb_s2_ghg",
+        "framework": "ISSB",
+        "disclosure_type": "entity_pai",
+        "annex_code": "IFRS S2 B62",
+        "field_code": "ISSB_S2_GHG",
+        "field_label": "IFRS S2 GHG Emissions (Scope 1, 2, 3)",
+        "field_kind": "numeric",
+        "mandatory": True,
+        "regulation_version": "IFRS S2 (2023)",
+        "legal_basis": "IFRS S2 Climate-related Disclosures, para B62-B67 (GHG emissions)",
+        "penalty_tier": "High",
+        "enforcement_body": "ISSB / National SDR Jurisdiction",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PAI_GHG_SCOPE1", "relationship": "equivalent_disclosure"},
+            {"framework": "SFDR", "field_code": "PAI_GHG_SCOPE2", "relationship": "equivalent_disclosure"},
+            {"framework": "SFDR", "field_code": "PAI_GHG_SCOPE3", "relationship": "equivalent_disclosure"},
+            {"framework": "SEC", "field_code": "SEC_GHG_SCOPE1", "relationship": "equivalent_disclosure"},
+            {"framework": "SEC", "field_code": "SEC_GHG_SCOPE2", "relationship": "equivalent_disclosure"},
+            {"framework": "SEC", "field_code": "SEC_GHG_SCOPE3", "relationship": "equivalent_disclosure"}
+        ],
+        "guidance": {
+            "description": "Gross GHG emissions across Scope 1, 2, and 3 in accordance with the GHG Protocol.",
+            "unit": "tCO2e",
+            "rule_checks": ["numeric_only", "must_have_evidence", "positive_value"]
+        }
+    },
+    {
+        "id": "field_issb_s2_transition",
+        "framework": "ISSB",
+        "disclosure_type": "entity_pai",
+        "annex_code": "IFRS S2 B24",
+        "field_code": "ISSB_S2_TRANSITION",
+        "field_label": "Climate Transition Plan (IFRS S2)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "IFRS S2 (2023)",
+        "legal_basis": "IFRS S2 Climate-related Disclosures, para B24-B28 (transition plans)",
+        "penalty_tier": "Medium",
+        "enforcement_body": "ISSB / National SDR Jurisdiction",
+        "cross_references": [
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "equivalent_disclosure"},
+            {"framework": "SEC", "field_code": "SEC_CLIMATE_RISK", "relationship": "equivalent_disclosure"}
+        ],
+        "guidance": {
+            "description": "Disclosure of transition plans aligned to the global temperature goals, including milestones and financing.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    },
+    {
+        "id": "field_issb_s1_finance",
+        "framework": "ISSB",
+        "disclosure_type": "entity_pai",
+        "annex_code": "IFRS S1",
+        "field_code": "ISSB_S1_GOODS_SERVICES",
+        "field_label": "Financial Effects of Climate Risk (IFRS S1/S2)",
+        "field_kind": "numeric",
+        "mandatory": True,
+        "regulation_version": "IFRS S1 (2023)",
+        "legal_basis": "IFRS S1 General Requirements for Disclosure of Sustainability-related Financial Information",
+        "penalty_tier": "Medium",
+        "enforcement_body": "ISSB / National SDR Jurisdiction",
+        "cross_references": [
+            {"framework": "SEC", "field_code": "SEC_FINANCIAL_IMPACT", "relationship": "equivalent_disclosure"},
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "complementary_indicator"}
+        ],
+        "guidance": {
+            "description": "Financial effects of sustainability-related risks and opportunities in the primary financial statements.",
+            "unit": "USD",
+            "rule_checks": ["numeric_only", "must_have_evidence", "positive_value"]
+        }
+    },
+    {
+        "id": "field_issb_s2_targets",
+        "framework": "ISSB",
+        "disclosure_type": "entity_pai",
+        "annex_code": "IFRS S2 B69",
+        "field_code": "ISSB_S2_TARGETS",
+        "field_label": "Climate Targets & Progress (IFRS S2)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "IFRS S2 (2023)",
+        "legal_basis": "IFRS S2 Climate-related Disclosures, para B69-B71 (targets and progress)",
+        "penalty_tier": "Medium",
+        "enforcement_body": "ISSB / National SDR Jurisdiction",
+        "cross_references": [
+            {"framework": "SEC", "field_code": "SEC_GHG_SCOPE1", "relationship": "complementary_indicator"},
+            {"framework": "SFDR", "field_code": "PERIODIC_SUSTAIN_INVEST_TARGET", "relationship": "complementary_indicator"}
+        ],
+        "guidance": {
+            "description": "Quantified climate targets, base year, target year, and progress against each interim milestone.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    },
+    {
+        "id": "field_issb_s1_materiality",
+        "framework": "ISSB",
+        "disclosure_type": "entity_pai",
+        "annex_code": "IFRS S1",
+        "field_code": "ISSB_S1_MATERIALITY",
+        "field_label": "Materiality Assessment (IFRS S1)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "IFRS S1 (2023)",
+        "legal_basis": "IFRS S1 General Requirements — materiality assessment framework",
+        "penalty_tier": "Low",
+        "enforcement_body": "ISSB / National SDR Jurisdiction",
+        "cross_references": [
+            {"framework": "CSRD", "field_code": "CSRD_GHG_SCOPE1", "relationship": "complementary_indicator"},
+            {"framework": "SEC", "field_code": "SEC_CLIMATE_RISK", "relationship": "supplementary_data"}
+        ],
+        "guidance": {
+            "description": "Explanation of how the undertaking identifies and prioritises material sustainability-related risks.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    }
+]
+
+# =============================================================================
 # What-If Scenario Templates
 # =============================================================================
 WHAT_IF_TEMPLATES = [
@@ -494,8 +856,8 @@ def seed_database():
         else:
             logger.debug("Products already exist.")
 
-        # 4. Seed ALL regulation fields (SFDR + CSRD)
-        all_fields = SFDR_FIELDS + CSRD_FIELDS
+        # 4. Seed ALL regulation fields (SFDR + CSRD + SEC + UK SDR + ISSB)
+        all_fields = SFDR_FIELDS + CSRD_FIELDS + SEC_FIELDS + UK_SDR_FIELDS + ISSB_FIELDS
         seeded_count = 0
         for f in all_fields:
             existing = db.query(RegulationField).filter(RegulationField.field_code == f["field_code"]).first()
@@ -521,7 +883,11 @@ def seed_database():
                 seeded_count += 1
         
         db.commit()
-        logger.info("Seeded %d regulation fields (%d SFDR + %d CSRD).", seeded_count, len(SFDR_FIELDS), len(CSRD_FIELDS))
+        logger.info(
+            "Seeded %d regulation fields (%d SFDR + %d CSRD + %d SEC + %d UK SDR + %d ISSB).",
+            seeded_count, len(SFDR_FIELDS), len(CSRD_FIELDS), len(SEC_FIELDS),
+            len(UK_SDR_FIELDS), len(ISSB_FIELDS),
+        )
         
     except Exception as e:
         db.rollback()

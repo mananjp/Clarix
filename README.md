@@ -12,6 +12,8 @@ This application simplifies the complex process of compiling entity-level Princi
 * **Automated Compliance Rules & Remediation Playbooks**: Programmatic sanitization and validation checks that link errors directly to legal risk evaluations and actionable, step-by-step remediation playbooks.
 * **Regulatory Impact Simulator Dashboard**: A simulation sandbox that allows compliance officers to test hypothetical scenarios (e.g. removing Scope 3 disclosures, dropping board gender diversity below 30%, or reclassifying funds between SFDR Article 6/8/9) to predict triggered obligations and risk scores.
 * **Cross-Framework Alignment**: Relationally maps SFDR requirements to equivalent standards in other frameworks (such as CSRD ESRS indicators).
+* **Anti-Greenwashing Contradiction Detector**: Scans marketing materials for quantified/absolute claims ("100% green", "zero fossil fuels") and cross-checks them against audited regulatory disclosures to surface discrepancies with legal citations, penalty tiers, and remediation playbooks.
+* **Multi-Jurisdictional Cross-Framework Harmonizer**: "Report once, comply everywhere." Resolves equivalent disclosures across SFDR, CSRD, SEC Climate Rule, UK SDR (FCA), and ISSB S1/S2 — auto-populating secondary frameworks from primary disclosures.
 * **RAG-Driven Ingestion & Retrieval**: Layout-aware parsing of PDF/TXT sustainability reports using PyMuPDF, segmented into logical semantic chunks with MD5-based deduplication hashes.
 * **Audit-Grade Traceability**: Relationally tracks `regulation_version`, `prompt_version`, and `model_parameters` for every drafted response, alongside detailed system audit logs relationally linked to actions.
 * **Versioned Draft History**: Implements a `version_no` and `is_latest` versioning system on disclosure answers to track the evolution of drafts and reviewer overrides without data loss.
@@ -44,6 +46,8 @@ erDiagram
     reporting_projects ||--o{ field_evidence : contains
     reporting_projects ||--o{ validation_results : evaluates
     reporting_projects ||--o{ what_if_scenarios : simulates
+    reporting_projects ||--o{ greenwashing_audits : audits
+    greenwashing_audits ||--o{ greenwashing_findings : contains
     documents ||--o{ document_chunks : parsed_into
     document_chunks ||--o{ field_evidence : references
     regulation_fields ||--o{ field_answers : defines
@@ -58,6 +62,7 @@ erDiagram
 * **`FieldEvidence`**: Stores extracted values, units, confidence scores, and source quotes. Enforces composite uniqueness on `(project_id, regulation_field_id, document_chunk_id, extraction_method)` to avoid duplicate citations.
 * **`FieldAnswer`**: Stores disclosure statements, tracking version history (`version_no`, `is_latest`).
 * **`WhatIfScenario`**: Persists historical regulatory impact simulations and risk scores.
+* **`GreenwashingAudit`** & **`GreenwashingFinding`**: Track contradiction scans between marketing claims and audited disclosures, with Greenwashing Risk Score (0-100), legal citations (ESMA/SEC), and remediation.
 * **`AuditLog`**: Relational audit trails linked directly to the acting user.
 
 ---

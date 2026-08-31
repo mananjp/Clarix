@@ -176,6 +176,11 @@ from app.routers.analytics import router as analytics_router
 from app.routers.settings import router as settings_router
 from app.routers.regulation_fields import router as regulation_fields_router
 from app.routers.data_retention import router as retention_router
+from app.routers.greenwashing import router as greenwashing_router
+from app.routers.cross_framework import router as cross_framework_router
+from app.routers.merkle_audit import router as merkle_audit_router
+from app.routers.intake import router as intake_router
+from app.routers.enterprise_sso import router as enterprise_sso_router
 
 app.include_router(health_router)
 app.include_router(auth_router)
@@ -190,6 +195,11 @@ app.include_router(analytics_router)
 app.include_router(settings_router)
 app.include_router(regulation_fields_router)
 app.include_router(retention_router)
+app.include_router(greenwashing_router)
+app.include_router(cross_framework_router)
+app.include_router(merkle_audit_router)
+app.include_router(intake_router)
+app.include_router(enterprise_sso_router)
 
 
 # ---------------------------------------------------------------------------

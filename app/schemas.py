@@ -407,3 +407,101 @@ class TrendForecastResponse(BaseModel):
     estimated_reduction: Optional[float] = None
     intervention_description: Optional[str] = None
 
+
+# --- Greenwashing Schemas ---
+class GreenwashingAuditRequest(BaseModel):
+    document_id: str
+
+
+class GreenwashingFindingResponse(BaseModel):
+    id: str
+    claim_quote: str
+    claim_source: Optional[Dict[str, Any]] = None
+    contradicting_field_code: Optional[str] = None
+    contradicting_value: Optional[Dict[str, Any]] = None
+    discrepancy_category: str
+    severity: str
+    legal_citation: Optional[str] = None
+    penalty_tier: str = "Medium"
+    enforcement_body: Optional[str] = None
+    remediation: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class GreenwashingAuditResponse(BaseModel):
+    id: str
+    project_id: str
+    document_id: Optional[str] = None
+    audit_status: str
+    total_claims_extracted: int = 0
+    total_findings: int = 0
+    risk_score: float = 0.0
+    risk_level: str = "Low"
+    summary: Optional[str] = None
+    created_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    findings: List[GreenwashingFindingResponse] = []
+
+
+# --- Cross-Framework Schemas ---
+class CrossFrameworkEquivalence(BaseModel):
+    source_framework: str
+    source_field_code: str
+    source_field_label: str
+    target_framework: str
+    target_field_code: str
+    target_field_label: str
+    relationship: Optional[str] = None
+
+
+class CrossFrameworkGap(BaseModel):
+    framework: str
+    field_code: str
+    field_label: str
+    field_kind: str
+    field_id: str
+    legal_basis: Optional[str] = None
+    penalty_tier: str = "Medium"
+    missing: bool = True
+
+
+class FrameworkCoverage(BaseModel):
+    total: int
+    covered: int
+    gaps: int
+
+
+class CrossFrameworkSummaryResponse(BaseModel):
+    project_id: str
+    alignment_score: float = 0.0
+    frameworks: Dict[str, FrameworkCoverage]
+    equivalences: List[CrossFrameworkEquivalence] = []
+    gaps: List[CrossFrameworkGap] = []
+    supported_frameworks: List[str] = []
+
+
+class HarmonizeRequest(BaseModel):
+    source_framework: str = "SFDR"
+    target_frameworks: Optional[List[str]] = None
+
+
+class HarmonizedField(BaseModel):
+    source_framework: str
+    source_field_code: str
+    target_framework: str
+    target_field_code: str
+    target_field_label: str
+    relationship: Optional[str] = None
+
+
+class HarmonizeResponse(BaseModel):
+    success: bool
+    project_id: Optional[str] = None
+    source_framework: Optional[str] = None
+    target_frameworks: Optional[List[str]] = None
+    fields_harmonized: int = 0
+    fields_skipped: int = 0
+    harmonized_fields: List[HarmonizedField] = []
+    skipped_fields: List[Dict[str, Any]] = []
+    error: Optional[str] = None
+

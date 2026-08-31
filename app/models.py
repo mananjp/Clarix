@@ -112,6 +112,7 @@ class ReportingProject(Base):
     what_if_scenarios = relationship("WhatIfScenario", back_populates="project", cascade="all, delete-orphan")
     auditor_ledger_entries = relationship("AuditorLedgerEntry", back_populates="project", cascade="all, delete-orphan")
     metric_snapshots = relationship("MetricSnapshot", back_populates="project", cascade="all, delete-orphan")
+    greenwashing_audits = relationship("GreenwashingAudit", back_populates="project", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -346,3 +347,124 @@ class MetricSnapshot(Base):
     organization = relationship("Organization")
     regulation_field = relationship("RegulationField")
     project = relationship("ReportingProject", back_populates="metric_snapshots")
+
+
+class GreenwashingAudit(Base):
+    """Tracks a greenwashing contradiction scan over a marketing source document."""
+    __tablename__ = "greenwashing_audits"
+
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(String, ForeignKey("reporting_projects.id", ondelete="CASCADE"), nullable=False)
+    document_id = Column(String, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    audit_status = Column(String, default="Running")  # "Running", "Completed", "Failed"
+    total_claims_extracted = Column(Integer, default=0)
+    total_findings = Column(Integer, default=0)
+    risk_score = Column(Float, default=0.0)           # computed Greenwashing Risk Score (0-100)
+    risk_level = Column(String, default="Low")        # "Low", "Moderate", "High", "Critical"
+    summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    project = relationship("ReportingProject", back_populates="greenwashing_audits")
+    findings = relationship("GreenwashingFinding", back_populates="audit", cascade="all, delete-orphan")
+
+
+class GreenwashingFinding(Base):
+    """A single contradiction between a marketing claim and audited regulatory disclosures."""
+    __tablename__ = "greenwashing_findings"
+
+    id = Column(String, primary_key=True, index=True)
+    audit_id = Column(String, ForeignKey("greenwashing_audits.id", ondelete="CASCADE"), nullable=False)
+    claim_quote = Column(Text, nullable=False)            # exact marketing claim quote
+    claim_source = Column(JSON, nullable=True)            # {"document_id", "page", "section", "chunk_index"}
+    contradicting_field_code = Column(String, nullable=True)  # e.g., "PAI_FOSSIL_FUEL"
+    contradicting_value = Column(JSON, nullable=True)     # audited value/unit from filed disclosure
+    discrepancy_category = Column(String, nullable=False) # e.g., "fossil_exposure", "absolute_claim_vs_measured"
+    severity = Column(String, default=Severity.WARNING.value)  # "Info", "Warning", "Error"
+    legal_citation = Column(Text, nullable=True)          # e.g., "SFDR Art. 10(2), ESMA 2023 Guidelines"
+    penalty_tier = Column(String, default=PenaltyTier.MEDIUM.value)
+    enforcement_body = Column(String, nullable=True)
+    remediation = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    audit = relationship("GreenwashingAudit", back_populates="findings")
+
+
+class MerkleAuditCheckpoint(Base):
+    """Stores cryptographically sealed Merkle root checkpoints for projects."""
+    __tablename__ = "merkle_audit_checkpoints"
+
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(String, ForeignKey("reporting_projects.id", ondelete="CASCADE"), nullable=False)
+    merkle_root = Column(String, nullable=False, index=True)
+    leaf_count = Column(Integer, default=0, nullable=False)
+    tree_depth = Column(Integer, default=0, nullable=False)
+    checkpoint_type = Column(String, default="Periodic")  # "Periodic", "AuditSignOff", "FilingSubmission"
+    sealed_by_user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    sealed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    summary_metadata = Column(JSON, nullable=True)  # Snapshot metrics, approvers, document hashes
+
+    project = relationship("ReportingProject")
+    sealed_by = relationship("User")
+
+
+class DataIntakeRequest(Base):
+    """Tokenized data collection request sent to an investee company or supply chain vendor."""
+    __tablename__ = "data_intake_requests"
+
+    id = Column(String, primary_key=True, index=True)
+    project_id = Column(String, ForeignKey("reporting_projects.id", ondelete="CASCADE"), nullable=False)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    token = Column(String, unique=True, index=True, nullable=False)
+    target_company_name = Column(String, nullable=False)
+    target_company_email = Column(String, nullable=True)
+    requested_framework = Column(String, default="SFDR")  # "SFDR", "CSRD", "SEC", "UK_SDR"
+    requested_field_codes = Column(JSON, nullable=True)   # ["PAI_GHG_SCOPE1", "PAI_GHG_SCOPE2", ...]
+    status = Column(String, default="Pending")           # "Pending", "Submitted", "Processed", "Expired"
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_by_user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    project = relationship("ReportingProject")
+    organization = relationship("Organization")
+    created_by = relationship("User")
+    submissions = relationship("InvesteeSubmission", back_populates="request", cascade="all, delete-orphan")
+
+
+class InvesteeSubmission(Base):
+    """A data payload or document uploaded by an investee via a tokenized intake portal."""
+    __tablename__ = "investee_submissions"
+
+    id = Column(String, primary_key=True, index=True)
+    request_id = Column(String, ForeignKey("data_intake_requests.id", ondelete="CASCADE"), nullable=False)
+    company_name = Column(String, nullable=False)
+    contact_name = Column(String, nullable=True)
+    contact_email = Column(String, nullable=True)
+    submitted_values = Column(JSON, nullable=True)       # {"PAI_GHG_SCOPE1": 1250.0, "unit": "tCO2e", ...}
+    uploaded_file_name = Column(String, nullable=True)
+    uploaded_storage_url = Column(String, nullable=True)
+    file_hash = Column(String, nullable=True)
+    parsed_evidence = Column(JSON, nullable=True)        # Extracted metrics from uploaded file
+    status = Column(String, default="Received")          # "Received", "Reviewed", "Merged"
+    submitted_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    request = relationship("DataIntakeRequest", back_populates="submissions")
+
+
+class EnterpriseSSOConfig(Base):
+    """Per-organization Enterprise SAML 2.0 / OIDC configuration."""
+    __tablename__ = "enterprise_sso_configs"
+
+    id = Column(String, primary_key=True, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), unique=True, nullable=False)
+    protocol = Column(String, default="SAML2")  # "SAML2", "OIDC"
+    idp_issuer = Column(String, nullable=False)
+    idp_sso_url = Column(String, nullable=False)
+    idp_certificate = Column(Text, nullable=True)
+    enabled = Column(Boolean, default=False)
+    auto_provision_users = Column(Boolean, default=True)
+    default_role = Column(String, default=UserRole.REVIEWER.value)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    organization = relationship("Organization")
