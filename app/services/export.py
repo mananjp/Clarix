@@ -1,7 +1,5 @@
-import os
-from typing import Dict, Any, List
 from sqlalchemy.orm import Session
-from app.models import ReportingProject, FieldAnswer, RegulationField, FieldEvidence, Document
+from app.models import ReportingProject, FieldAnswer, RegulationField, FieldEvidence
 
 class ExportService:
     @staticmethod
@@ -57,7 +55,8 @@ class ExportService:
                 else:
                     display_val = str(ext_val)
 
-            md.append(f"| {field.field_label} | `{field.field_code}` | **{status}** | {display_val} | {field.guidance.get('description', '')} |")
+            guidance_desc = field.guidance.get('description', '') if field.guidance else ''
+            md.append(f"| {field.field_label} | `{field.field_code}` | **{status}** | {display_val} | {guidance_desc} |")
 
             # Collect field details
             field_details.append({

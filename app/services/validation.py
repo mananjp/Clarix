@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Dict, Any
+from typing import List
 from sqlalchemy.orm import Session
 from app.models import FieldAnswer, FieldEvidence, ValidationResult, RegulationField, ReportingProject
 
@@ -215,7 +215,7 @@ class ValidationService:
                         rule_name="narrative_too_short",
                         severity="Info",
                         passed=False,
-                        message=f"The disclosure narrative is very brief. Consider expanding to meet compliance requirements."
+                        message="The disclosure narrative is very brief. Consider expanding to meet compliance requirements."
                     )
                     db.add(res)
                     validation_results.append(res)

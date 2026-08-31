@@ -1,11 +1,9 @@
 import uuid
-import datetime
 import json
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from app.models import (
-    WhatIfScenario, RegulationField, FieldAnswer, FieldEvidence,
-    ReportingProject, Product
+    WhatIfScenario, RegulationField
 )
 from app.seed_regulations import WHAT_IF_TEMPLATES
 from app.services.generation import GenerationService
@@ -266,7 +264,7 @@ class WhatIfEngine:
         for article in knowledge.get("regulation_articles", []):
             triggered_obligations.append({
                 "regulation_article": article,
-                "description": f"Threshold breach triggers obligations under this article.",
+                "description": "Threshold breach triggers obligations under this article.",
                 "field_code": field_code
             })
 
@@ -427,7 +425,6 @@ class WhatIfEngine:
         # High-fidelity simulation fallback
         action = params.get("action", "custom_scenario")
         field_code = params.get("field_code", "")
-        proposed_value = params.get("proposed_value", "")
         free_text = (params.get("free_text_context") or "").lower()
 
         # Build custom response based on keywords

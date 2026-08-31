@@ -1,0 +1,27 @@
+# Git / env
+.git
+.gitignore
+*.md
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Local data (uploads kept via volume, do not bake into image)
+data/*.db
+data/uploads/*
+!data/uploads/.gitkeep
+
+# Tests / logs
+tests/
+*.log

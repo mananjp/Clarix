@@ -1,5 +1,5 @@
 import math
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 def linear_regression(x: List[float], y: List[float]) -> tuple[float, float]:
     n = len(x)

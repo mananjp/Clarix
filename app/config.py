@@ -16,16 +16,49 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# Database: prefer Neon PostgreSQL, fall back to SQLite for offline dev
-DATABASE_URL = os.getenv("NEON_URL") or os.getenv("DATABASE_URL") or f"sqlite:///{DATA_DIR}/sfdr.db"
+# --- Database selection -----------------------------------------------------
+#   USE_POSTGRES=true  -> connect to the local Docker PostgreSQL (see docker-compose.yml)
+#   NEON_URL           -> (legacy) managed Neon PostgreSQL
+#   DATABASE_URL       -> explicit connection string (highest priority after USE_POSTGRES)
+#   default            -> local SQLite at data/sfdr.db
+#
+# Precedence:
+#   1. USE_POSTGRES=true  -> local Docker Postgres
+#   2. NEON_URL           -> managed Postgres
+#   3. DATABASE_URL       -> explicit override
+#   4. SQLite fallback
+def _build_database_url() -> str:
+    if os.getenv("USE_POSTGRES", "").strip().lower() in ("1", "true", "yes"):
+        user = os.getenv("POSTGRES_USER", "clarix")
+        password = os.getenv("POSTGRES_PASSWORD", "clarix")
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        port = os.getenv("POSTGRES_PORT", "55432")
+        db = os.getenv("POSTGRES_DB", "clarix")
+        return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
+    if os.getenv("NEON_URL"):
+        return os.getenv("NEON_URL")
+    if os.getenv("DATABASE_URL"):
+        return os.getenv("DATABASE_URL")
+    return f"sqlite:///{DATA_DIR}/sfdr.db"
+
+
+DATABASE_URL = _build_database_url()
 
 # API Keys
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
+# JWT signing secret - fail fast with a clearly actionable error if unset
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\" "
+        "and add it to your .env file."
+    )
+
 # Default settings
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-oss-120b")
 SUPPORTED_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
+    "openai/gpt-oss-120b",
     "gemma2-9b-it"
 ]

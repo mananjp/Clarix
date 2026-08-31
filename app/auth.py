@@ -5,13 +5,11 @@ import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-import os
 
 from app.database import get_db
 from app.models import User
 from app.schemas import TokenData
-
-SECRET_KEY = os.getenv("SECRET_KEY")
+from app.config import SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 
@@ -51,4 +49,25 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(User).filter(User.username == token_data.username).first()
     if user is None:
         raise credentials_exception
+    if not user.active:
+        raise credentials_exception
     return user
+
+
+def require_role(*roles: str):
+    """
+    RBAC dependency factory. Guards an endpoint so that only users whose role
+    is in `roles` may call it.
+
+    Usage:
+        @router.post("/approve")
+        def approve(..., current_user: User = Depends(require_role("ComplianceOfficer", "Administrator"))):
+    """
+    def _checker(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires one of roles: {', '.join(roles)}",
+            )
+        return current_user
+    return _checker

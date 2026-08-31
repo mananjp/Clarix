@@ -1,5 +1,4 @@
-import uuid
-from app.database import Base, engine, SessionLocal
+from app.database import SessionLocal
 from app.models import RegulationField, Organization, Product, User, UserRole
 from app.auth import get_password_hash
 

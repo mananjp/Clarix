@@ -1,0 +1,78 @@
+name: Clarix CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff (backend)
+        run: ruff check app/ tests/ scripts/ --output-format=github
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+    env:
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      DATABASE_URL: "sqlite://"
+      GROQ_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest httpx ruff
+
+      - name: Run pytest
+        run: pytest tests/ -v --tb=short
+
+  migration-check:
+    name: Migration Check
+    runs-on: ubuntu-latest
+    needs: lint
+    env:
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      DATABASE_URL: "sqlite://"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run migration integrity check
+        run: python scripts/check_migrations.py

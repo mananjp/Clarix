@@ -1,8 +1,14 @@
 import os
+import re
 import json
+import time
 import random
+import logging
+import functools
 from typing import Dict, Any, List, Optional
 from app.config import GROQ_API_KEY, DEFAULT_MODEL
+
+logger = logging.getLogger(__name__)
 
 # Try importing groq, handle gracefully
 try:
@@ -10,6 +16,39 @@ try:
     HAS_GROQ = True
 except ImportError:
     HAS_GROQ = False
+
+# ---------------------------------------------------------------------------
+# Retry / backoff helper
+# ---------------------------------------------------------------------------
+_MAX_RETRIES = 3
+_BASE_DELAY = 1.0  # seconds
+_GROQ_TIMEOUT = 30  # seconds
+
+
+def _retry_with_backoff(func):
+    """
+    Decorator that retries a function up to _MAX_RETRIES times with
+    exponential backoff + jitter on any exception.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        last_exc = None
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                return func(*args, **kwargs)
+            except Exception as exc:
+                last_exc = exc
+                if attempt == _MAX_RETRIES:
+                    break
+                delay = _BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+                logger.warning(
+                    "Groq API call failed (attempt %d/%d): %s — retrying in %.1fs",
+                    attempt, _MAX_RETRIES, exc, delay,
+                )
+                time.sleep(delay)
+        raise last_exc  # type: ignore[misc]
+    return wrapper
+
 
 class GenerationService:
     @classmethod
@@ -20,9 +59,9 @@ class GenerationService:
         api_key = GROQ_API_KEY or os.getenv("GROQ_API_KEY", "")
         if HAS_GROQ and api_key:
             try:
-                return Groq(api_key=api_key)
+                return Groq(api_key=api_key, timeout=_GROQ_TIMEOUT)
             except Exception as e:
-                print(f"Error initializing Groq client: {e}")
+                logger.error("Error initializing Groq client: %s", e)
         return None
 
     @classmethod
@@ -41,46 +80,60 @@ class GenerationService:
 
         if client:
             try:
-                system_prompt = (
-                    "You are an expert AI ESG compliance auditor specializing in SFDR (Sustainable Finance Disclosure Regulation) reporting.\n"
-                    "Your task is to analyze the provided document excerpts and extract precise evidence for a specific regulatory field.\n"
-                    "You must output ONLY a valid JSON object matching the schema below, without any markdown formatting or extra text.\n"
-                    "If no evidence is found, set status to 'missing'.\n"
-                    "JSON Output Schema:\n"
-                    "{\n"
-                    "  \"field_code\": \"string\",\n"
-                    "  \"status\": \"found\" | \"missing\" | \"uncertain\",\n"
-                    "  \"evidence_quote\": \"precise direct sentence quote from context containing the data, or null\",\n"
-                    "  \"extracted_value\": {\"value\": float or string, \"unit\": \"string\"} or null,\n"
-                    "  \"confidence\": float (between 0.0 and 1.0),\n"
-                    "  \"reasoning_short\": \"brief 1-sentence explanation of extraction logic\"\n"
-                    "}"
-                )
-
-                user_content = (
-                    f"Target Field Code: {field_code}\n"
-                    f"Target Field Label: {field_label}\n"
-                    f"Field Kind: {field_kind}\n\n"
-                    f"Candidate Document Excerpts:\n{context_str}"
-                )
-
-                response = client.chat.completions.create(
-                    model=DEFAULT_MODEL,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content}
-                    ],
-                    temperature=0.0,
-                    response_format={"type": "json_object"}
-                )
-                
-                result_json = json.loads(response.choices[0].message.content)
-                return result_json
+                result = cls._call_groq_extract(client, field_code, field_label, field_kind, context_str)
+                return result
             except Exception as e:
-                print(f"Error calling Groq API: {e}. Falling back to simulation.")
+                logger.warning(
+                    "Groq extraction failed after retries for field_code=%s: %s — falling back to simulator",
+                    field_code, e,
+                )
                 
         # High-fidelity Simulator Fallback
+        logger.info(
+            "Using simulator fallback for evidence extraction: field_code=%s reason=%s",
+            field_code,
+            "groq_unavailable" if not client else "groq_error",
+        )
         return cls.simulate_evidence_extraction(field_code, field_label, field_kind, chunks)
+
+    @classmethod
+    @_retry_with_backoff
+    def _call_groq_extract(cls, client, field_code: str, field_label: str, field_kind: str, context_str: str) -> Dict[str, Any]:
+        """Call Groq API for evidence extraction with retry/backoff."""
+        system_prompt = (
+            "You are an expert AI ESG compliance auditor specializing in SFDR (Sustainable Finance Disclosure Regulation) reporting.\n"
+            "Your task is to analyze the provided document excerpts and extract precise evidence for a specific regulatory field.\n"
+            "You must output ONLY a valid JSON object matching the schema below, without any markdown formatting or extra text.\n"
+            "If no evidence is found, set status to 'missing'.\n"
+            "JSON Output Schema:\n"
+            "{\n"
+            "  \"field_code\": \"string\",\n"
+            "  \"status\": \"found\" | \"missing\" | \"uncertain\",\n"
+            "  \"evidence_quote\": \"precise direct sentence quote from context containing the data, or null\",\n"
+            "  \"extracted_value\": {\"value\": float or string, \"unit\": \"string\"} or null,\n"
+            "  \"confidence\": float (between 0.0 and 1.0),\n"
+            "  \"reasoning_short\": \"brief 1-sentence explanation of extraction logic\"\n"
+            "}"
+        )
+
+        user_content = (
+            f"Target Field Code: {field_code}\n"
+            f"Target Field Label: {field_label}\n"
+            f"Field Kind: {field_kind}\n\n"
+            f"Candidate Document Excerpts:\n{context_str}"
+        )
+
+        response = client.chat.completions.create(
+            model=DEFAULT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"}
+        )
+        
+        return json.loads(response.choices[0].message.content)
 
     @classmethod
     def draft_answer(cls, field_code: str, field_label: str, field_kind: str, evidence: Dict[str, Any]) -> Dict[str, Any]:
@@ -101,39 +154,54 @@ class GenerationService:
 
         if client:
             try:
-                system_prompt = (
-                    "You are a professional regulatory disclosure writer.\n"
-                    "Draft an official, professional SFDR template-compliant response segment for a field based *solely* on the provided extracted evidence.\n"
-                    "Do not invent any numbers, dates, or details. Keep it objective and professional.\n"
-                    "Output a JSON object with keys 'answer_text' (prose response) and 'answer_json' (structured schema)."
-                )
-
-                user_content = (
-                    f"Field Label: {field_label}\n"
-                    f"Field Code: {field_code}\n"
-                    f"Extracted Value: {extracted_value}\n"
-                    f"Source Citation Quote: \"{evidence_quote}\"\n"
-                )
-
-                response = client.chat.completions.create(
-                    model=DEFAULT_MODEL,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content}
-                    ],
-                    temperature=0.2,
-                    response_format={"type": "json_object"}
-                )
-                
-                result_json = json.loads(response.choices[0].message.content)
-                if "model_name" not in result_json:
-                    result_json["model_name"] = DEFAULT_MODEL
-                return result_json
+                result = cls._call_groq_draft(client, field_code, field_label, evidence_quote, extracted_value)
+                return result
             except Exception as e:
-                print(f"Error calling Groq API for draft: {e}")
+                logger.warning(
+                    "Groq drafting failed after retries for field_code=%s: %s — falling back to simulator",
+                    field_code, e,
+                )
 
         # Simulator Fallback for Draft Generation
+        logger.info(
+            "Using simulator fallback for answer drafting: field_code=%s reason=%s",
+            field_code,
+            "groq_unavailable" if not client else "groq_error",
+        )
         return cls.simulate_answer_drafting(field_code, field_label, field_kind, evidence)
+
+    @classmethod
+    @_retry_with_backoff
+    def _call_groq_draft(cls, client, field_code: str, field_label: str, evidence_quote: str, extracted_value) -> Dict[str, Any]:
+        """Call Groq API for answer drafting with retry/backoff."""
+        system_prompt = (
+            "You are a professional regulatory disclosure writer.\n"
+            "Draft an official, professional SFDR template-compliant response segment for a field based *solely* on the provided extracted evidence.\n"
+            "Do not invent any numbers, dates, or details. Keep it objective and professional.\n"
+            "Output a JSON object with keys 'answer_text' (prose response) and 'answer_json' (structured schema)."
+        )
+
+        user_content = (
+            f"Field Label: {field_label}\n"
+            f"Field Code: {field_code}\n"
+            f"Extracted Value: {extracted_value}\n"
+            f"Source Citation Quote: \"{evidence_quote}\"\n"
+        )
+
+        response = client.chat.completions.create(
+            model=DEFAULT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
+        
+        result_json = json.loads(response.choices[0].message.content)
+        if "model_name" not in result_json:
+            result_json["model_name"] = DEFAULT_MODEL
+        return result_json
 
     @classmethod
     def simulate_evidence_extraction(cls, field_code: str, field_label: str, field_kind: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -300,8 +368,8 @@ class GenerationService:
 
         elif field_kind == "table":
             answer_text = (
-                f"The fund's top investment holdings participating in sustainable objectives during the reporting period are listed below. "
-                f"These top holdings account for the core capital allocation dedicated to decarbonization:"
+                "The fund's top investment holdings participating in sustainable objectives during the reporting period are listed below. "
+                "These top holdings account for the core capital allocation dedicated to decarbonization:"
             )
             answer_json = {"holdings": val, "count": len(val) if isinstance(val, list) else 0}
 
@@ -316,5 +384,5 @@ class GenerationService:
         return {
             "answer_text": answer_text,
             "answer_json": answer_json,
-            "model_name": "llama3-70b-8192 (Simulated)"
+            "model_name": f"{DEFAULT_MODEL} (Simulated)"
         }
