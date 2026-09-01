@@ -85,7 +85,10 @@ if HAS_CELERY:
                     results.append({"document_id": doc_id, "status": "not_found"})
                     continue
                 try:
-                    pages = IngestionService.process_document(doc.storage_url, doc.file_type)
+                    from app.services.storage import get_storage_backend
+                    storage = get_storage_backend()
+                    raw = storage.load(doc.storage_url.replace("s3://", "") if doc.storage_url.startswith("s3://") else doc.storage_url)
+                    pages = IngestionService.process_document_bytes(raw, doc.file_type)
                     chunks = IngestionService.chunk_document_data(pages)
                     results.append({
                         "document_id": doc_id,

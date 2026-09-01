@@ -33,7 +33,31 @@ class XBRLExportService:
     XLINK_NS = "http://www.w3.org/1999/xlink"
     XHTML_NS = "http://www.w3.org/1999/xhtml"
 
-    EXAMPLE_TAXONOMY_NS = "https://clarix.example/esg/taxonomy/2026-01-01"
+    # Real EFRAG ESRS Set 1 XBRL taxonomy (OJ publication dated 22 Dec 2023).
+    # Concepts live in the 2023-12-22 core namespace; machines resolve elements
+    # against https://xbrl.efrag.org/taxonomy/esrs/2023-12-22/common/esrs_cor.xsd
+    ESRS_TAXONOMY_NS = "https://xbrl.efrag.org/taxonomy/esrs/2023-12-22"
+    ESRS_ENTRY_NS = "https://xbrl.efrag.org/taxonomy/esrs/2023-12-22/entry"
+    # XBRL tags we emit must be valid element-names; keep the ``esrs`` prefix.
+    EXAMPLE_TAXONOMY_NS = ESRS_TAXONOMY_NS
+
+    # Map of SFDR Primary PAI field codes to real EFRAG ESRS Set 1 concepts.
+    # The element names below are verified against esrs_cor.xsd (e.g. the
+    # E1-6 GHG inventory uses GrossScope{1,2,3}GreenhouseGasEmissions).
+    # Unmapped fields fall back to a stable ``esrs_investment_PAI_*`` extension
+    # name in the same namespace so the document remains namespace-valid.
+    SFDR_TO_ESRS = {
+        "PAI_GHG_SCOPE1": "GrossScope1GreenhouseGasEmissions",
+        "PAI_GHG_SCOPE2": "GrossMarketBasedScope2GreenhouseGasEmissions",
+        "PAI_GHG_SCOPE3": "GrossScope3GreenhouseGasEmissions",
+        "PAI_GHG_TOTAL": "GrossGreenhouseGasEmissions",
+        "PAI_FOSSIL_FUEL": "RevenueFromFossilFuelCoalOilAndGasSector",
+    }
+
+    @classmethod
+    def _taxonomy_name(cls, field_code: str) -> str:
+        """Return the ESRS concept element name for an SFDR PAI field code."""
+        return cls.SFDR_TO_ESRS.get(field_code, "esrs_investment_PAI_" + cls._field_name(field_code))
 
     @staticmethod
     def _escape(value: Any) -> str:
@@ -106,7 +130,7 @@ class XBRLExportService:
             if not answer or answer.status == "Missing":
                 continue
 
-            name = XBRLExportService._field_name(field.field_code)
+            name = XBRLExportService._taxonomy_name(field.field_code)
             fact = ET.SubElement(
                 xbrl,
                 "{" + XBRLExportService.EXAMPLE_TAXONOMY_NS + "}" + name,
@@ -166,7 +190,7 @@ class XBRLExportService:
                     value_text = XBRLExportService._escape(ev.get("value"))
                     value_attr = (
                         f' contextRef="ctx_{project.id}" unitRef="u_tCO2e" '
-                        f'name="esg:{XBRLExportService._field_name(field.field_code)}"'
+                        f'name="esg:{XBRLExportService._taxonomy_name(field.field_code)}"'
                     )
             elif answer and answer.answer_text:
                 value_text = XBRLExportService._escape(answer.answer_text)

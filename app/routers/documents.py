@@ -69,7 +69,7 @@ async def upload_document(
 
     # Process chunks and save
     try:
-        pages_content = IngestionService.process_document(storage_path, file_ext)
+        pages_content = IngestionService.process_document_bytes(content, file_ext)
         chunks = IngestionService.chunk_document_data(pages_content)
 
         for chk in chunks:
@@ -160,7 +160,7 @@ async def upload_documents_batch(
         db.commit()
 
         try:
-            pages_content = IngestionService.process_document(storage_path, file_ext)
+            pages_content = IngestionService.process_document_bytes(content, file_ext)
             chunks = IngestionService.chunk_document_data(pages_content)
 
             for chk in chunks:

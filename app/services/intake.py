@@ -151,7 +151,7 @@ class DataIntakeService:
 
             # Parse text & extract candidates
             try:
-                pages_content = IngestionService.process_document(storage_url, file_ext)
+                pages_content = IngestionService.process_document_bytes(file_bytes, file_ext)
                 chunks = IngestionService.chunk_document_data(pages_content)
 
                 # Run evidence extraction for requested fields

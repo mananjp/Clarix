@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert, LogOut, Package, Scale, ShieldCheck, LineChart } from 'lucide-react';
+import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert, LogOut, Package, Scale, ShieldCheck, LineChart, Workflow, Database } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
@@ -40,6 +40,8 @@ const Sidebar = ({ isOpen, onClose }) => {
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {[
             { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+            { to: '/sfdr', icon: Workflow, label: 'SFDR Workspace' },
+            { to: '/esg-feed', icon: Database, label: 'ESG Feed Coverage' },
             { to: '/matrix', icon: Table, label: 'Requirement Matrix' },
             { to: '/reviewer', icon: ClipboardCheck, label: 'Reviewer Desk' },
             { to: '/regulatory-impact', icon: Scale, label: 'Impact Simulator' },

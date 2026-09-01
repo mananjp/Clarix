@@ -24,6 +24,8 @@ import TrendDashboard from './pages/TrendDashboard';
 import AuditTrail from './pages/AuditTrail';
 import AuditExport from './pages/AuditExport';
 import Settings from './pages/Settings';
+import SfdrCoreLoop from './pages/SfdrCoreLoop';
+import EsgFeedCoverage from './pages/EsgFeedCoverage';
 
 const ProtectedRoute = () => {
   const { currentUser, loading } = useAuth();
@@ -71,6 +73,9 @@ function App() {
                 <Route path="/audit" element={<AuditTrail />} />
                 <Route path="/exports" element={<AuditExport />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/sfdr" element={<SfdrCoreLoop />} />
+                <Route path="/esg-feed" element={<EsgFeedCoverage />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Route>
             </Route>
           </Routes>

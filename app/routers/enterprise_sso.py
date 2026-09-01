@@ -75,6 +75,7 @@ def get_sso_configuration(
         "enabled": config.enabled,
         "idp_sso_url": config.idp_sso_url,
         "idp_issuer": config.idp_issuer,
+        "secure": bool(config.idp_certificate),
     }
 
 
@@ -87,11 +88,17 @@ def saml_callback(
     """
     Process SAML 2.0 Response assertion from Identity Provider (Okta, Azure AD / Entra ID, PingIdentity)
     and return an authenticated session JWT token.
+
+    The assertion MUST carry a valid XML Signature that verifies against the
+    organization's configured IdP signing certificate. Unsigned or tampered
+    assertions are rejected outright.
     """
     org_id = RelayState or "default_org"
 
     try:
-        attributes = EnterpriseSSOService.parse_saml_assertion(SAMLResponse)
+        attributes = EnterpriseSSOService.verify_and_parse_saml_assertion(
+            db, org_id=org_id, saml_response_b64=SAMLResponse
+        )
         user, access_token = EnterpriseSSOService.authenticate_or_provision_user(
             db,
             org_id=org_id,

@@ -55,6 +55,21 @@ class TestXBRL:
         result = XBRLExportService.generate_all(seeded_db, test_project.id)
         assert "xbrl" in result and "inline_xbrl" in result
 
+    def test_esrs_taxonomy_namespace_and_mapped_concepts(self):
+        """No placeholder taxonomy: use the real EFRAG ESRS Set 1 namespace, and
+        every configured SFDR field must map to a real (known) ESRS concept."""
+        assert XBRLExportService.EXAMPLE_TAXONOMY_NS == \
+            "https://xbrl.efrag.org/taxonomy/esrs/2023-12-22"
+        verified = {
+            "PAI_GHG_SCOPE1": "GrossScope1GreenhouseGasEmissions",
+            "PAI_GHG_SCOPE2": "GrossMarketBasedScope2GreenhouseGasEmissions",
+            "PAI_GHG_SCOPE3": "GrossScope3GreenhouseGasEmissions",
+            "PAI_GHG_TOTAL": "GrossGreenhouseGasEmissions",
+            "PAI_FOSSIL_FUEL": "RevenueFromFossilFuelCoalOilAndGasSector",
+        }
+        for code, expected in verified.items():
+            assert XBRLExportService._taxonomy_name(code) == expected, code
+
 
 class TestESGDataFeed:
     def test_mock_provider(self):

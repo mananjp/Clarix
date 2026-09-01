@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from app.config import UPLOAD_DIR
+from app.services.encryption import encrypt_bytes, decrypt_bytes, is_encryption_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +45,34 @@ class StorageBackend(ABC):
 
 
 class LocalStorageBackend(StorageBackend):
-    """Stores files on the local filesystem under ``UPLOAD_DIR``."""
+    """Stores files on the local filesystem under ``UPLOAD_DIR``.
 
-    def __init__(self, base_dir: str | None = None):
+    When ``ENCRYPT_AT_REST`` is enabled, bytes are AES-256-GCM encrypted
+    before writing and transparently decrypted on ``load``. Files on disk are
+    always ciphertext; callers of ``load`` always receive plaintext.
+    """
+
+    def __init__(self, base_dir: str | None = None, encrypt: bool | None = None):
         self._base = Path(base_dir) if base_dir else UPLOAD_DIR
         self._base.mkdir(parents=True, exist_ok=True)
+        self._encrypt = is_encryption_enabled() if encrypt is None else encrypt
+        if self._encrypt:
+            logger.info("LocalStorageBackend initialized with encryption-at-rest.")
 
     def _path(self, key: str) -> Path:
         return self._base / key
 
     def save(self, file_bytes: bytes, key: str) -> str:
         path = self._path(key)
-        path.write_bytes(file_bytes)
+        stored = encrypt_bytes(file_bytes) if self._encrypt else file_bytes
+        path.write_bytes(stored)
         return str(path)
 
     def load(self, key: str) -> bytes:
-        return self._path(key).read_bytes()
+        stored = self._path(key).read_bytes()
+        if self._encrypt:
+            return decrypt_bytes(stored)
+        return stored
 
     def exists(self, key: str) -> bool:
         return self._path(key).exists()

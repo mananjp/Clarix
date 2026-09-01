@@ -5,15 +5,15 @@ Supports SAML 2.0 and OIDC identity providers (Okta, Azure AD / Microsoft Entra,
 """
 
 import uuid
-import base64
 import datetime
 import logging
 from typing import Dict, Any, Tuple, Optional
-from xml.etree import ElementTree as ET
+
 from sqlalchemy.orm import Session
 
 from app.models import User, EnterpriseSSOConfig, UserRole
 from app.auth import create_access_token, get_password_hash, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.services.saml_security import verify_saml_signature, SamlVerificationError
 
 logger = logging.getLogger(__name__)
 
@@ -69,47 +69,80 @@ class EnterpriseSSOService:
         return config
 
     @classmethod
-    def parse_saml_assertion(cls, saml_response_b64: str) -> Dict[str, Any]:
+    def assert_sso_secure(cls, config: EnterpriseSSOConfig) -> None:
         """
-        Parses a Base64-encoded SAML 2.0 XML assertion to extract user attributes.
+        Refuse to process SSO unless the integration is provably secure:
+        the IdP signing certificate must be stored (it is the trust anchor for
+        XML Signature verification) and the issuer must be pinned.
         """
+        if not config or not config.enabled:
+            raise SamlVerificationError(f"SSO is not enabled for organization {config.organization_id if config else 'unknown'}.")
+        if not config.idp_certificate:
+            raise SamlVerificationError(
+                "SSO is disabled: no IdP signing certificate is configured. "
+                "Upload the IdP's X.509 public signing certificate before enabling SAML."
+            )
+        if not config.idp_issuer:
+            raise SamlVerificationError(
+                "SSO is disabled: no IdP issuer (Entity ID) is configured."
+            )
+
+    @classmethod
+    def verify_and_parse_saml_assertion(
+        cls,
+        db: Session,
+        org_id: str,
+        saml_response_b64: str,
+    ) -> Dict[str, Any]:
+        """
+        Securely verify then parse a SAML 2.0 Response.
+
+        Returns the extracted attributes ONLY if the XML Signature validates
+        against the configured IdP certificate and the issuer matches the
+        pinned IdP. Any unsigned, tampered, or wrong-issuer assertion is
+        rejected, never returned.
+        """
+        config = cls.get_config(db, org_id)
+        cls.assert_sso_secure(config)
+
         try:
-            xml_bytes = base64.b64decode(saml_response_b64)
-            root = ET.fromstring(xml_bytes)
+            root = verify_saml_signature(
+                saml_response_b64,
+                idp_certificate_pem=config.idp_certificate,
+                expected_issuer=config.idp_issuer,
+            )
+        except SamlVerificationError as e:
+            logger.warning("Rejected SAML assertion for org %s: %s", org_id, e)
+            raise
 
-            # Namespace-agnostic element search
+        # Extract NameID / Email
+        email = None
+        for elem in root.iter():
+            if "NameID" in elem.tag:
+                email = elem.text.strip() if elem.text else None
+                break
 
-            # Extract NameID / Email
-            email = None
-            for elem in root.iter():
-                if "NameID" in elem.tag:
-                    email = elem.text.strip() if elem.text else None
-                    break
+        # Fallback attribute search
+        attributes = {}
+        for attr in root.iter():
+            if "Attribute" in attr.tag:
+                attr_name = attr.attrib.get("Name") or attr.attrib.get("FriendlyName")
+                val_elem = attr.find(".//{*}AttributeValue")
+                if attr_name and val_elem is not None and val_elem.text:
+                    attributes[attr_name.lower()] = val_elem.text.strip()
 
-            # Fallback attribute search
-            attributes = {}
-            for attr in root.iter():
-                if "Attribute" in attr.tag:
-                    attr_name = attr.attrib.get("Name") or attr.attrib.get("FriendlyName")
-                    val_elem = attr.find(".//{*}AttributeValue")
-                    if attr_name and val_elem is not None and val_elem.text:
-                        attributes[attr_name.lower()] = val_elem.text.strip()
+        user_email = email or attributes.get("email") or attributes.get("mail") or attributes.get("userprincipalname")
+        username = attributes.get("username") or attributes.get("displayname") or (user_email.split("@")[0] if user_email else None)
+        role = attributes.get("role") or attributes.get("groups")
 
-            user_email = email or attributes.get("email") or attributes.get("mail") or attributes.get("userprincipalname")
-            username = attributes.get("username") or attributes.get("displayname") or (user_email.split("@")[0] if user_email else None)
-            role = attributes.get("role") or attributes.get("groups")
+        if not user_email:
+            raise ValueError("Could not extract email address from SAML assertion.")
 
-            if not user_email:
-                raise ValueError("Could not extract email address from SAML assertion.")
-
-            return {
-                "email": user_email,
-                "username": username or user_email.split("@")[0],
-                "role": role,
-            }
-        except Exception as e:
-            logger.error("Failed to parse SAML response: %s", e)
-            raise ValueError(f"SAML Assertion Parsing Error: {e}")
+        return {
+            "email": user_email,
+            "username": username or user_email.split("@")[0],
+            "role": role,
+        }
 
     @classmethod
     def authenticate_or_provision_user(
