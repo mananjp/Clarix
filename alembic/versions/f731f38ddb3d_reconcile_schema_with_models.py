@@ -31,7 +31,11 @@ def upgrade() -> None:
     op.add_column('reporting_projects', sa.Column('reporting_year', sa.Integer(), nullable=True))
     op.add_column('reporting_projects', sa.Column('industry_sector', sa.String(), nullable=True))
     op.add_column('users', sa.Column('organization_id', sa.String(), nullable=True))
-    op.create_foreign_key('fk_users_organization_id', 'users', 'organizations', ['organization_id'], ['id'], ondelete='SET NULL')
+    # SQLite cannot add a foreign key via ALTER TABLE (it requires batch /
+    # copy-and-move mode). The constraint is added natively on FK-capable
+    # backends (Postgres); on SQLite it is enforced by the application/ORM.
+    if op.get_bind().dialect.name != 'sqlite':
+        op.create_foreign_key('fk_users_organization_id', 'users', 'organizations', ['organization_id'], ['id'], ondelete='SET NULL')
     op.add_column('validation_results', sa.Column('regulation_ref', sa.String(), nullable=True))
     op.add_column('validation_results', sa.Column('legal_consequence', sa.Text(), nullable=True))
     op.add_column('validation_results', sa.Column('penalty_range', sa.String(), nullable=True))
@@ -48,7 +52,8 @@ def downgrade() -> None:
     op.drop_column('validation_results', 'penalty_range')
     op.drop_column('validation_results', 'legal_consequence')
     op.drop_column('validation_results', 'regulation_ref')
-    op.drop_constraint('fk_users_organization_id', 'users', type_='foreignkey')
+    if op.get_bind().dialect.name != 'sqlite':
+        op.drop_constraint('fk_users_organization_id', 'users', type_='foreignkey')
     op.drop_column('users', 'organization_id')
     op.drop_column('reporting_projects', 'industry_sector')
     op.drop_column('reporting_projects', 'reporting_year')
