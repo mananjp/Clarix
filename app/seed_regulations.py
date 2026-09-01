@@ -877,7 +877,8 @@ def seed_database():
             {"id": "user_officer", "username": "officer_alice", "email": "alice@greenfield.com", "role": UserRole.COMPLIANCE_OFFICER.value},
             {"id": "user_reviewer", "username": "reviewer_bob", "email": "bob@greenfield.com", "role": UserRole.REVIEWER.value},
             {"id": "user_admin", "username": "admin_charlie", "email": "admin@greenfield.com", "role": UserRole.ADMINISTRATOR.value},
-            {"id": "user_auditor", "username": "auditor_dana", "email": "auditor@greenfield.com", "role": UserRole.AUDITOR.value}
+            {"id": "user_auditor", "username": "auditor_dana", "email": "auditor@greenfield.com", "role": UserRole.AUDITOR.value},
+            {"id": "user_manan", "username": "manan", "email": "manan@company.com", "role": UserRole.ADMINISTRATOR.value}
         ]
         
         for u in users_to_seed:
