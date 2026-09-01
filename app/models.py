@@ -23,9 +23,10 @@ class AnswerStatus(str, enum.Enum):
     MISSING = "Missing"
 
 class UserRole(str, enum.Enum):
-    REVIEWER = "Reviewer"
-    COMPLIANCE_OFFICER = "ComplianceOfficer"
+    SUPER_ADMIN = "SuperAdmin"
     ADMINISTRATOR = "Administrator"
+    COMPLIANCE_OFFICER = "ComplianceOfficer"
+    REVIEWER = "Reviewer"
     AUDITOR = "Auditor"
 
 class Severity(str, enum.Enum):
@@ -69,6 +70,20 @@ class Organization(Base):
 
     products = relationship("Product", back_populates="organization", cascade="all, delete-orphan")
     projects = relationship("ReportingProject", back_populates="organization", cascade="all, delete-orphan")
+
+
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id = Column(String, primary_key=True, index=True)
+    organization_id = Column(String, index=True)
+    email = Column(String, nullable=False)
+    role = Column(String, default=UserRole.REVIEWER.value, nullable=False)
+    token = Column(String, unique=True, index=True, nullable=False)
+    status = Column(String, default="pending", nullable=False)
+    invited_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
 
 
 class Product(Base):

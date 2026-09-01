@@ -10,6 +10,7 @@ import AuthLayout from './layouts/AuthLayout';
 // Auth Pages
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import AcceptInvite from './pages/AcceptInvite';
 
 // Landing Page
 import Home from './pages/Home';
@@ -26,6 +27,7 @@ import AuditExport from './pages/AuditExport';
 import Settings from './pages/Settings';
 import SfdrCoreLoop from './pages/SfdrCoreLoop';
 import EsgFeedCoverage from './pages/EsgFeedCoverage';
+import Team from './pages/Team';
 
 const ProtectedRoute = () => {
   const { currentUser, loading } = useAuth();
@@ -59,6 +61,7 @@ function App() {
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/invite/:token" element={<AcceptInvite />} />
             </Route>
 
             {/* Protected App Routes */}
@@ -75,6 +78,7 @@ function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/sfdr" element={<SfdrCoreLoop />} />
                 <Route path="/esg-feed" element={<EsgFeedCoverage />} />
+                <Route path="/team" element={<Team />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Route>
             </Route>

@@ -45,6 +45,11 @@ const Login = () => {
         </motion.div>
       )}
 
+      <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs text-slate-500">
+        <span className="font-bold text-slate-700">Demo login:</span> admin_charlie / password123 (Administrator) · or create a company in{' '}
+        <Link to="/signup" className="text-slate-900 font-bold hover:underline">Sign up</Link> to become a Super Admin.
+      </div>
+
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <label className="text-sm font-bold text-slate-700 ml-1">Email Address</label>

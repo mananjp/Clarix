@@ -46,13 +46,14 @@ export const AuthProvider = ({ children }) => {
     setCurrentUser(userResponse.data);
   };
 
-  const register = async (username, email, password) => {
+  const register = async (username, email, password, organizationName) => {
     await client.post('/auth/register', {
       username,
       email,
       password,
       role: 'Reviewer',
       active: true,
+      organization_name: organizationName || null,
     });
     // Automatically log in after registration
     await login(username, password);

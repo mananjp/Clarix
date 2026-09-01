@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, UserPlus, ArrowRight } from 'lucide-react';
+import { Mail, Lock, User, UserPlus, Building2, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 
@@ -9,6 +9,7 @@ const Signup = () => {
   const { register } = useAuth();
 
   const [name, setName] = useState('');
+  const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -20,7 +21,7 @@ const Signup = () => {
     setError('');
 
     try {
-      await register(name, email, password);
+      await register(name, email, password, company);
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create account. Please try again.');
@@ -33,7 +34,7 @@ const Signup = () => {
     <div className="flex flex-col gap-8 font-sans">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-slate-900 mb-2">Get Started</h2>
-        <p className="text-slate-500 font-medium tracking-tight">Create your personal compliance workspace</p>
+        <p className="text-slate-500 font-medium tracking-tight">Create your company's compliance workspace</p>
       </div>
 
       {error && (
@@ -58,6 +59,20 @@ const Signup = () => {
               onChange={(e) => setName(e.target.value)}
               className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-[20px] text-base text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-900 focus:bg-white transition-all shadow-sm"
               placeholder="Enter your name"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-bold text-slate-700 ml-1">Company Name</label>
+          <div className="relative group">
+            <Building2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-900 transition-colors" />
+            <input
+              type="text"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-[20px] text-base text-slate-900 placeholder:text-slate-300 focus:outline-none focus:border-slate-900 focus:bg-white transition-all shadow-sm"
+              placeholder="e.g. SolarCraft Technologies"
             />
           </div>
         </div>

@@ -909,6 +909,13 @@ def seed_database():
         else:
             logger.debug("Organization already exists.")
 
+        # Backfill any users without an organization to the default org so that
+        # seeded/system accounts (e.g. system@sfdr.ai) can see default_org projects.
+        db.query(User).filter(User.organization_id.is_(None)).update(
+            {User.organization_id: org_id}
+        )
+        db.commit()
+
         # 3. Seed default products if not exists
         prod_id = "default_prod_8"
         prod = db.query(Product).filter(Product.id == prod_id).first()

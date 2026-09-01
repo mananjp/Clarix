@@ -12,6 +12,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    organization_name: Optional[str] = None
 
 class UserLogin(BaseModel):
     email: str
@@ -43,6 +44,30 @@ class OrganizationCreate(OrganizationBase):
 class Organization(OrganizationBase):
     id: str
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- Invite Schemas ---
+class InviteCreate(BaseModel):
+    email: str
+    role: str
+
+class InviteAccept(BaseModel):
+    token: str
+    username: str
+    password: str
+
+class Invite(BaseModel):
+    id: str
+    organization_id: str
+    email: str
+    role: str
+    token: str
+    status: str
+    invited_by: Optional[str] = None
+    created_at: datetime
+    expires_at: datetime
 
     class Config:
         from_attributes = True

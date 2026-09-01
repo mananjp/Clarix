@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert, LogOut, Package, Scale, ShieldCheck, LineChart, Workflow, Database } from 'lucide-react';
+import { LayoutDashboard, Table, ClipboardCheck, History, Settings, X, ShieldAlert, LogOut, Package, Scale, ShieldCheck, LineChart, Workflow, Database, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
@@ -49,6 +49,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             { to: '/trends', icon: LineChart, label: 'Predictive Trends' },
             { to: '/audit', icon: History, label: 'Audit Trail' },
             { to: '/exports', icon: Package, label: 'Export Package' },
+            { to: '/team', icon: Users, label: 'Team' },
             { to: '/settings', icon: Settings, label: 'Settings' }
           ].map((item) => (
             <NavLink

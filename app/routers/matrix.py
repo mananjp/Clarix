@@ -50,6 +50,7 @@ def _build_matrix_row(db, project, field, answer_by_field, evidence_fields, vali
     )
     return {
         "field_id": field.id,
+        "answer_id": answer.id if answer else None,
         "field_code": field.field_code,
         "field_label": field.field_label,
         "annex_code": field.annex_code,

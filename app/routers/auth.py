@@ -10,7 +10,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import User, Organization, UserRole
 from app.schemas import UserCreate, User as UserResponse, Token
 from app.auth import (
     get_password_hash, verify_password, create_access_token,
@@ -24,21 +24,41 @@ router = APIRouter(prefix="/api", tags=["auth"])
 @router.post("/auth/register", response_model=UserResponse)
 @limiter.limit("5/minute")
 def register_user(request: Request, user_in: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user."""
+    """Register a new user.
+
+    If ``organization_name`` is supplied, a new Organization is created and
+    the registrant becomes that company's Super Admin (self-serve onboarding).
+    Otherwise the user joins the shared ``default_org`` (used for the demo
+    workspace and tests).
+    """
     existing = db.query(User).filter(
         (User.username == user_in.username) | (User.email == user_in.email)
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username or email already registered.")
 
+    if user_in.organization_name and user_in.organization_name.strip():
+        org = Organization(
+            id=str(uuid.uuid4()),
+            name=user_in.organization_name.strip(),
+            type="Asset Manager",
+        )
+        db.add(org)
+        db.flush()
+        organization_id = org.id
+        role = UserRole.SUPER_ADMIN.value
+    else:
+        organization_id = "default_org"
+        role = user_in.role or UserRole.REVIEWER.value
+
     db_user = User(
         id=str(uuid.uuid4()),
         username=user_in.username,
         email=user_in.email,
         hashed_password=get_password_hash(user_in.password),
-        role=user_in.role,
+        role=role,
         active=user_in.active,
-        organization_id="default_org"
+        organization_id=organization_id
     )
     db.add(db_user)
     db.commit()

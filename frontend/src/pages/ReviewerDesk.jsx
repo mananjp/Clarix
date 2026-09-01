@@ -17,6 +17,7 @@ const ReviewerDesk = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [draftText, setDraftText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState('');
 
   // Sync internal state with global state and URL
   useEffect(() => {
@@ -85,12 +86,14 @@ const ReviewerDesk = () => {
   const handleApprove = async () => {
     if (!selectedItem?.answer_id) return;
     setIsSaving(true);
+    setActionError('');
     try {
       await client.post(`/answers/${selectedItem.answer_id}/approve?reviewer_id=${currentUser.id}`);
       setMatrixItems(prev => prev.map(i => i.field_id === selectedItem.field_id ? { ...i, answer_status: 'Approved' } : i));
       setSelectedItem(prev => ({ ...prev, answer_status: 'Approved' }));
     } catch (err) {
       console.error(err);
+      setActionError(err.response?.data?.detail || err.response?.data?.error?.message || `Approve failed (${err.response?.status || 'network'})`);
     } finally {
       setIsSaving(false);
     }
@@ -99,12 +102,14 @@ const ReviewerDesk = () => {
   const handleReject = async () => {
     if (!selectedItem?.answer_id) return;
     setIsSaving(true);
+    setActionError('');
     try {
       await client.post(`/answers/${selectedItem.answer_id}/reject?reviewer_id=${currentUser.id}`);
       setMatrixItems(prev => prev.map(i => i.field_id === selectedItem.field_id ? { ...i, answer_status: 'Rejected' } : i));
       setSelectedItem(prev => ({ ...prev, answer_status: 'Rejected' }));
     } catch (err) {
       console.error(err);
+      setActionError(err.response?.data?.detail || err.response?.data?.error?.message || `Reject failed (${err.response?.status || 'network'})`);
     } finally {
       setIsSaving(false);
     }
@@ -113,6 +118,7 @@ const ReviewerDesk = () => {
   const handleSaveDraft = async () => {
     if (!selectedItem?.answer_id) return;
     setIsSaving(true);
+    setActionError('');
     try {
       await client.put(`/answers/${selectedItem.answer_id}`, {
         answer_text: draftText,
@@ -123,6 +129,7 @@ const ReviewerDesk = () => {
       setSelectedItem(prev => ({ ...prev, answer_text: draftText, answer_status: 'Draft' }));
     } catch (err) {
       console.error(err);
+      setActionError(err.response?.data?.detail || err.response?.data?.error?.message || `Save failed (${err.response?.status || 'network'})`);
     } finally {
       setIsSaving(false);
     }
@@ -277,6 +284,11 @@ const ReviewerDesk = () => {
                         className="form-input min-h-[180px] text-base leading-relaxed bg-slate-50 focus:bg-white transition-all shadow-inner"
                         placeholder="Type evidence-based answer here..."
                       ></textarea>
+                      {actionError && (
+                        <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-sm font-bold text-rose-700">
+                          {actionError}
+                        </div>
+                      )}
                       <div className="flex justify-end pt-4 gap-3">
                         <button
                           onClick={handleSaveDraft}

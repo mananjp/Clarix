@@ -32,10 +32,8 @@ def get_products(db: Session = Depends(get_db), current_user: User = Depends(get
 @router.get("/projects")
 def get_projects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Retrieve reporting projects for the current user's organization strictly."""
-    if not current_user.organization_id:
-        return []
-
-    projects = db.query(ReportingProject).filter(ReportingProject.organization_id == current_user.organization_id).all()
+    org_id = current_user.organization_id or "default_org"
+    projects = db.query(ReportingProject).filter(ReportingProject.organization_id == org_id).all()
     results = []
     
     for proj in projects:

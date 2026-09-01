@@ -188,6 +188,7 @@ from app.routers.regulatory_content import router as regulatory_content_router
 from app.routers.double_materiality import router as double_materiality_router
 from app.routers.ghg import router as ghg_router
 from app.routers.benchmarking import router as benchmarking_router
+from app.routers.invites import router as invites_router
 
 app.include_router(health_router)
 app.include_router(auth_router)
@@ -214,6 +215,7 @@ app.include_router(regulatory_content_router)
 app.include_router(double_materiality_router)
 app.include_router(ghg_router)
 app.include_router(benchmarking_router)
+app.include_router(invites_router)
 
 
 # ---------------------------------------------------------------------------
