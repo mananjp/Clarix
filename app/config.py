@@ -62,3 +62,17 @@ SUPPORTED_MODELS = [
     "openai/gpt-oss-120b",
     "gemma2-9b-it"
 ]
+
+# ---------------------------------------------------------------------------
+# EU data residency & hosting configuration
+# ---------------------------------------------------------------------------
+#   DATA_RESIDENCY_REGION   -> EU region where regulatory data is hosted
+#                             (e.g. "eu-central-1", "eu-west-1", "eu")
+#   DATA_RESIDENCY_VENDOR   -> cloud/hosting vendor (aws | azure | gcp | self)
+#   DATA_RESIDENCY_STATEMENT-> short human description surfaced in ops
+DATA_RESIDENCY_REGION = os.getenv("DATA_RESIDENCY_REGION", "eu-central-1")
+DATA_RESIDENCY_VENDOR = os.getenv("DATA_RESIDENCY_VENDOR", "aws")
+DATA_RESIDENCY_STATEMENT = os.getenv(
+    "DATA_RESIDENCY_STATEMENT",
+    "Regulatory disclosure data is hosted within the European Union.",
+)

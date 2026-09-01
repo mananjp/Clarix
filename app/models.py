@@ -26,6 +26,7 @@ class UserRole(str, enum.Enum):
     REVIEWER = "Reviewer"
     COMPLIANCE_OFFICER = "ComplianceOfficer"
     ADMINISTRATOR = "Administrator"
+    AUDITOR = "Auditor"
 
 class Severity(str, enum.Enum):
     INFO = "Info"
@@ -468,3 +469,54 @@ class EnterpriseSSOConfig(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     organization = relationship("Organization")
+
+
+class DoubleMaterialityAssessment(Base):
+    """
+    CSRD-mandated double-materiality assessment (CSRD Art. 19a / ESRS 1).
+
+    Records the financial-materiality (impact of sustainability on the
+    undertaking) and impact-materiality (impact of the undertaking on people
+    and planet) scores per ESRS topic, plus the combined materiality verdict
+    that determines which ESRS topics apply to the entity.
+    """
+    __tablename__ = "double_materiality_assessments"
+
+    id = Column(String, primary_key=True, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(String, ForeignKey("reporting_projects.id", ondelete="CASCADE"), nullable=True)
+    esrs_topic = Column(String, nullable=False)          # e.g. "E1", "S1", "G1"
+    topic_name = Column(String, nullable=False)          # e.g. "Climate change"
+    financial_materiality = Column(Float, default=0.0)   # 0-100 impact on undertaking
+    impact_materiality = Column(Float, default=0.0)      # 0-100 impact on people/planet
+    material_threshold = Column(Float, default=50.0)     # configurable threshold
+    combined_verdict = Column(String, default="NotMaterial")  # "Material"/"NotMaterial"
+    rationale = Column(Text, nullable=True)
+    assessment_status = Column(String, default="Draft")  # Draft/Reviewed/Approved
+    assessed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    assessed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    organization = relationship("Organization")
+    project = relationship("ReportingProject")
+    assessor = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "project_id", "esrs_topic", name="uq_org_project_esrs_topic"),
+    )
+
+
+# Default ESRS topics for the double-materiality assessment (ESRS 1 Appendix A)
+ESRS_TOPICS = [
+    ("E1", "Climate change"),
+    ("E2", "Pollution"),
+    ("E3", "Water and marine resources"),
+    ("E4", "Biodiversity and ecosystems"),
+    ("E5", "Resource use and circular economy"),
+    ("S1", "Own workforce"),
+    ("S2", "Workers in the value chain"),
+    ("S3", "Affected communities"),
+    ("S4", "Consumers and end-users"),
+    ("G1", "Business conduct"),
+]

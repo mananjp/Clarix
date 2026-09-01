@@ -5,7 +5,7 @@ import json
 import io
 import zipfile
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import PlainTextResponse, HTMLResponse, FileResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse, FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,29 +15,30 @@ from app.models import (
 from app.auth import get_current_user, require_role
 from app.services.export import ExportService
 from app.services.ingestion import IngestionService
+from app.services.xbrl import XBRLExportService
 
 router = APIRouter(prefix="/api", tags=["export"])
 
 
 @router.get("/projects/{project_id}/export/markdown")
-def download_markdown_package(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def download_markdown_package(project_id: str, framework: str = "SFDR", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Download an audit-ready Markdown disclosure package."""
     try:
-        report = ExportService.generate_markdown_report(db, project_id)
+        report = ExportService.generate_markdown_report(db, project_id, framework)
         return PlainTextResponse(content=report, headers={
-            "Content-Disposition": f"attachment; filename=SFDR_Disclosure_Package_{project_id}.md"
+            "Content-Disposition": f"attachment; filename={framework}_Disclosure_Package_{project_id}.md"
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/projects/{project_id}/export/html")
-def download_html_package(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def download_html_package(project_id: str, framework: str = "SFDR", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Download a stunningly designed printable HTML audit disclosure package."""
     try:
-        report = ExportService.generate_html_report(db, project_id)
+        report = ExportService.generate_html_report(db, project_id, framework)
         return HTMLResponse(content=report, headers={
-            "Content-Disposition": f"attachment; filename=SFDR_RTS_Report_{project_id}.html"
+            "Content-Disposition": f"attachment; filename={framework}_RTS_Report_{project_id}.html"
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -46,6 +47,7 @@ def download_html_package(project_id: str, db: Session = Depends(get_db), curren
 @router.post("/projects/{project_id}/audit-export")
 def generate_audit_export_package(
     project_id: str,
+    framework: str = "SFDR",
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("ComplianceOfficer", "Administrator"))
 ):
@@ -65,13 +67,13 @@ def generate_audit_export_package(
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             # 1. Final reports
             try:
-                markdown_report = ExportService.generate_markdown_report(db, project_id)
+                markdown_report = ExportService.generate_markdown_report(db, project_id, framework)
                 zip_file.writestr("Final_Report.md", markdown_report)
             except Exception as e:
                 zip_file.writestr("Final_Report.md", f"Error generating report: {e}")
 
             try:
-                html_report = ExportService.generate_html_report(db, project_id)
+                html_report = ExportService.generate_html_report(db, project_id, framework)
                 zip_file.writestr("Final_Report.html", html_report)
             except Exception as e:
                 zip_file.writestr("Final_Report.html", f"Error generating report: {e}")
@@ -145,3 +147,32 @@ def generate_audit_export_package(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# XBRL / iXBRL (ESAP-ready) export
+# ---------------------------------------------------------------------------
+@router.get("/projects/{project_id}/export/xbrl")
+def download_xbrl_package(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Download a machine-readable XBRL instance document (ESAP-ready)."""
+    try:
+        report = XBRLExportService.generate_xbrl_instance(db, project_id)
+        return Response(
+            content=report,
+            media_type="application/xml",
+            headers={"Content-Disposition": f"attachment; filename=ESAP_XBRL_{project_id}.xbrl"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/projects/{project_id}/export/ixbrl")
+def download_ixbrl_package(project_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Download an inline-XBRL (iXBRL xHTML) document with embedded tags (ESAP-ready)."""
+    try:
+        report = XBRLExportService.generate_inline_xbrl_export(db, project_id)
+        return HTMLResponse(content=report, headers={
+            "Content-Disposition": f"attachment; filename=ESAP_iXBRL_{project_id}.html"
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

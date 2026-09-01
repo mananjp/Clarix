@@ -15,6 +15,7 @@ from app.auth import get_current_user
 from app.services.ingestion import IngestionService
 from app.services.storage import get_storage_backend
 from app.limiter import limiter
+from app.tasks import batch_ingest_documents_task
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +213,63 @@ def get_project_documents(project_id: str, db: Session = Depends(get_db), curren
         raise HTTPException(status_code=404, detail="Project not found.")
 
     return db.query(Document).filter(Document.project_id == project_id).all()
+
+
+@router.post("/projects/{project_id}/documents/batch-process")
+def batch_process_documents(
+    project_id: str,
+    framework: str = "SFDR",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Enqueue all pending (unparsed) documents in a project for asynchronous batch
+    processing via Celery. When no broker is configured, the task runs
+    synchronously in-process (dev/test mode).
+    """
+    project = db.query(ReportingProject).filter(
+        ReportingProject.id == project_id,
+        ReportingProject.organization_id == (current_user.organization_id or "default_org"),
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    pending_docs = db.query(Document).filter(
+        Document.project_id == project_id,
+        Document.parsed_status.in_(["Pending", "Parsing", "Failed"]),
+    ).all()
+    doc_ids = [d.id for d in pending_docs]
+    if not doc_ids:
+        return {"message": "No pending documents to process.", "document_ids": []}
+
+    if batch_ingest_documents_task is None:
+        raise HTTPException(status_code=503, detail="Celery is not available.")
+
+    async_result = batch_ingest_documents_task.delay(
+        project_id=project_id,
+        document_ids=doc_ids,
+        actor_id=current_user.id,
+        framework=framework,
+    )
+
+    # In eager (no-broker) mode 'delay' executes synchronously and has a result.
+    if getattr(async_result, "successful", lambda: False)():
+        try:
+            return {
+                "message": "Batch processing completed.",
+                "mode": "synchronous",
+                "result": async_result.result,
+                "enqueued_documents": doc_ids,
+            }
+        except Exception:
+            pass
+
+    return {
+        "message": "Batch processing enqueued asynchronously.",
+        "mode": "async",
+        "task_id": str(async_result.id) if async_result else None,
+        "enqueued_documents": doc_ids,
+    }
 
 
 @router.get("/documents/{document_id}/integrity", response_model=DocumentIntegrityResponse)

@@ -182,6 +182,12 @@ from app.routers.merkle_audit import router as merkle_audit_router
 from app.routers.intake import router as intake_router
 from app.routers.enterprise_sso import router as enterprise_sso_router
 from app.routers.matrix import router as matrix_router
+from app.routers.auditor import router as auditor_router
+from app.routers.esg_data_feed import router as esg_feed_router
+from app.routers.regulatory_content import router as regulatory_content_router
+from app.routers.double_materiality import router as double_materiality_router
+from app.routers.ghg import router as ghg_router
+from app.routers.benchmarking import router as benchmarking_router
 
 app.include_router(health_router)
 app.include_router(auth_router)
@@ -202,6 +208,12 @@ app.include_router(merkle_audit_router)
 app.include_router(intake_router)
 app.include_router(enterprise_sso_router)
 app.include_router(matrix_router)
+app.include_router(auditor_router)
+app.include_router(esg_feed_router)
+app.include_router(regulatory_content_router)
+app.include_router(double_materiality_router)
+app.include_router(ghg_router)
+app.include_router(benchmarking_router)
 
 
 # ---------------------------------------------------------------------------

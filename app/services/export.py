@@ -3,7 +3,7 @@ from app.models import ReportingProject, FieldAnswer, RegulationField, FieldEvid
 
 class ExportService:
     @staticmethod
-    def generate_markdown_report(db: Session, project_id: str) -> str:
+    def generate_markdown_report(db: Session, project_id: str, framework: str = "SFDR") -> str:
         """
         Generates a comprehensive, audit-ready Markdown compliance package for the project.
         """
@@ -15,10 +15,13 @@ class ExportService:
         product = project.product
 
         # Get all mapped fields, answers, and evidence
-        fields = db.query(RegulationField).filter(RegulationField.disclosure_type == project.disclosure_type).all()
+        fields = db.query(RegulationField).filter(
+            RegulationField.disclosure_type == project.disclosure_type,
+            RegulationField.framework == framework,
+        ).all()
 
         md = []
-        md.append(f"# SFDR Disclosure Package: {project.name}")
+        md.append(f"# {framework} Disclosure Package: {project.name}")
         md.append(f"**Reporting Period:** {project.reporting_period_start} to {project.reporting_period_end}")
         md.append(f"**Entity Manager:** {org.name if org else 'Greenfield Capital Partners Ltd'}")
         if product:
@@ -104,7 +107,7 @@ class ExportService:
         return "\n".join(md)
 
     @staticmethod
-    def generate_html_report(db: Session, project_id: str) -> str:
+    def generate_html_report(db: Session, project_id: str, framework: str = "SFDR") -> str:
         """
         Generates a highly structured, stunningly formatted, print-ready HTML disclosure document.
         """
@@ -114,7 +117,10 @@ class ExportService:
 
         org = project.organization
         product = project.product
-        fields = db.query(RegulationField).filter(RegulationField.disclosure_type == project.disclosure_type).all()
+        fields = db.query(RegulationField).filter(
+            RegulationField.disclosure_type == project.disclosure_type,
+            RegulationField.framework == framework,
+        ).all()
 
         table_rows = ""
         detailed_sections = ""
@@ -186,7 +192,7 @@ class ExportService:
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <title>SFDR RTS Compliance Report: {project.name}</title>
+            <title>{framework} RTS Compliance Report: {project.name}</title>
             <style>
                 body {{
                     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -317,7 +323,7 @@ class ExportService:
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>SFDR RTS Compliance Report</h1>
+                    <h1>{framework} RTS Compliance Report</h1>
                     <div class="meta-grid">
                         <div class="meta-item"><strong>Project:</strong> {project.name}</div>
                         <div class="meta-item"><strong>Reporting Period:</strong> {project.reporting_period_start} to {project.reporting_period_end}</div>

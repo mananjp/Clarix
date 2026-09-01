@@ -384,6 +384,87 @@ CSRD_FIELDS = [
             "unit": "%",
             "rule_checks": ["numeric_only", "percentage_range", "must_have_evidence"]
         }
+    },
+    {
+        "id": "field_csrd_e1_energy",
+        "framework": "CSRD",
+        "disclosure_type": "entity_pai",
+        "annex_code": "ESRS E1",
+        "field_code": "CSRD_ENERGY_CONSUMPTION",
+        "field_label": "Energy Consumption & Mix (ESRS E1-5)",
+        "field_kind": "numeric",
+        "mandatory": True,
+        "regulation_version": "ESRS 2023",
+        "legal_basis": "CSRD Art. 19a, ESRS E1-5 (Energy consumption and mix)",
+        "penalty_tier": "Medium",
+        "enforcement_body": "Member State Authority / EFRAG",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PAI_GHG_SCOPE1", "relationship": "complementary_indicator"}
+        ],
+        "guidance": {
+            "description": "Total energy consumption in MWh, split by source and energy mix, embedded in ESRS E1-5.",
+            "unit": "MWh",
+            "rule_checks": ["numeric_only", "must_have_evidence", "positive_value"]
+        }
+    },
+    {
+        "id": "field_csrd_e2_poll",
+        "framework": "CSRD",
+        "disclosure_type": "entity_pai",
+        "annex_code": "ESRS E2",
+        "field_code": "CSRD_POLLUTION",
+        "field_label": "Pollution Impacts (ESRS E2)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "ESRS 2023",
+        "legal_basis": "CSRD Art. 19a, ESRS E2 (Pollution)",
+        "penalty_tier": "Medium",
+        "enforcement_body": "Member State Authority",
+        "cross_references": [],
+        "guidance": {
+            "description": "Disclosure of emissions to air, water and soil; and substances of concern per ESRS E2.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    },
+    {
+        "id": "field_csrd_s1_workforce",
+        "framework": "CSRD",
+        "disclosure_type": "entity_pai",
+        "annex_code": "ESRS S1",
+        "field_code": "CSRD_OWN_WORKFORCE",
+        "field_label": "Own Workforce Metrics (ESRS S1)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "ESRS 2023",
+        "legal_basis": "CSRD Art. 19a, ESRS S1 (Own workforce)",
+        "penalty_tier": "Medium",
+        "enforcement_body": "Member State Authority",
+        "cross_references": [
+            {"framework": "SFDR", "field_code": "PAI_BOARD_GENDER_DIVERSITY", "relationship": "complementary_indicator"}
+        ],
+        "guidance": {
+            "description": "Disclosure of workforce characteristics, health and safety, and own-workforce metrics per ESRS S1.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
+    },
+    {
+        "id": "field_csrd_g1_business",
+        "framework": "CSRD",
+        "disclosure_type": "entity_pai",
+        "annex_code": "ESRS G1",
+        "field_code": "CSRD_BUSINESS_CONDUCT",
+        "field_label": "Business Conduct (ESRS G1)",
+        "field_kind": "narrative",
+        "mandatory": True,
+        "regulation_version": "ESRS 2023",
+        "legal_basis": "CSRD Art. 19a, ESRS G1 (Business conduct)",
+        "penalty_tier": "Medium",
+        "enforcement_body": "Member State Authority",
+        "cross_references": [],
+        "guidance": {
+            "description": "Disclosure of anti-corruption, anti-bribery, and business-conduct policies per ESRS G1.",
+            "rule_checks": ["narrative_length", "must_have_evidence"]
+        }
     }
 ]
 
@@ -795,7 +876,8 @@ def seed_database():
             {"id": "system", "username": "System Auto-Agent", "email": "system@sfdr.ai", "role": UserRole.ADMINISTRATOR.value},
             {"id": "user_officer", "username": "officer_alice", "email": "alice@greenfield.com", "role": UserRole.COMPLIANCE_OFFICER.value},
             {"id": "user_reviewer", "username": "reviewer_bob", "email": "bob@greenfield.com", "role": UserRole.REVIEWER.value},
-            {"id": "user_admin", "username": "admin_charlie", "email": "admin@greenfield.com", "role": UserRole.ADMINISTRATOR.value}
+            {"id": "user_admin", "username": "admin_charlie", "email": "admin@greenfield.com", "role": UserRole.ADMINISTRATOR.value},
+            {"id": "user_auditor", "username": "auditor_dana", "email": "auditor@greenfield.com", "role": UserRole.AUDITOR.value}
         ]
         
         for u in users_to_seed:
