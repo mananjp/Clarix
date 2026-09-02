@@ -40,6 +40,7 @@ def _compromised_rows():
         "users",
         sa.column("id", sa.String),
         sa.column("email", sa.String),
+        sa.column("active", sa.Boolean),
     )
     by_id = sa.or_(*(users.c.id == value for value in COMPROMISED_IDS))
     by_email = sa.or_(*(users.c.email == value for value in COMPROMISED_EMAILS))
