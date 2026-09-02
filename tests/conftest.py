@@ -27,7 +27,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import Base, engine as app_engine
 from app.models import (
-    Organization, ReportingProject, RegulationField, User,
+    Organization,
+    ReportingProject,
+    RegulationField,
+    User,
 )
 
 
@@ -36,6 +39,7 @@ def _app_schema():
     """Create tables + default_org on the global app engine once (so startup seeding works)."""
     Base.metadata.create_all(bind=app_engine)
     from sqlalchemy.orm import Session as _S
+
     s = _S(bind=app_engine)
     try:
         if s.query(Organization).filter(Organization.id == "default_org").first() is None:
@@ -45,6 +49,7 @@ def _app_schema():
         s.close()
 
     from app.limiter import limiter
+
     limiter.enabled = False
     yield
     try:
@@ -89,6 +94,7 @@ def seeded_db(db_session):
     db_session.add(org)
 
     from app.auth import get_password_hash
+
     user = User(
         id="test_user",
         organization_id="test_org",
@@ -100,11 +106,13 @@ def seeded_db(db_session):
     )
     db_session.add(user)
 
-    for i, (code, label, kind) in enumerate([
-        ("PAI_GHG_SCOPE1", "Scope 1 GHG emissions", "numeric"),
-        ("PAI_GHG_SCOPE2", "Scope 2 GHG emissions", "numeric"),
-        ("PAI_FOSSIL_FUEL", "Fossil fuel sector exposure", "numeric"),
-    ]):
+    for i, (code, label, kind) in enumerate(
+        [
+            ("PAI_GHG_SCOPE1", "Scope 1 GHG emissions", "numeric"),
+            ("PAI_GHG_SCOPE2", "Scope 2 GHG emissions", "numeric"),
+            ("PAI_FOSSIL_FUEL", "Fossil fuel sector exposure", "numeric"),
+        ]
+    ):
         field = RegulationField(
             id=f"field_{i}",
             framework="SFDR",
@@ -168,21 +176,36 @@ def client(db_engine):
 
 
 @pytest.fixture(scope="function")
-def auth_headers(client):
+def auth_headers(client, db_session):
     """
     Register a user and return auth headers with a valid Bearer token.
+
+    The public registration endpoint never grants elevated roles (default-org
+    registrants are always Reviewers), so this fixture escalates the user to
+    Administrator directly in the DB — test infrastructure only.
     """
     # Register
-    client.post("/api/auth/register", json={
-        "username": "ci_user",
-        "email": "ci@clarix.dev",
-        "password": "CIpassword123!",
-        "role": "Administrator",
-    })
+    client.post(
+        "/api/auth/register",
+        json={
+            "username": "ci_user",
+            "email": "ci@clarix.dev",
+            "password": "CIpassword123!",
+        },
+    )
+    from app.models import UserRole
+
+    user = db_session.query(User).filter(User.username == "ci_user").first()
+    user.role = UserRole.ADMINISTRATOR.value
+    db_session.commit()
+
     # Login
-    resp = client.post("/api/auth/token", data={
-        "username": "ci_user",
-        "password": "CIpassword123!",
-    })
+    resp = client.post(
+        "/api/auth/token",
+        data={
+            "username": "ci_user",
+            "password": "CIpassword123!",
+        },
+    )
     token = resp.json().get("access_token", "")
     return {"Authorization": f"Bearer {token}"}

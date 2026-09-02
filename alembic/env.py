@@ -5,10 +5,9 @@ from logging.config import fileConfig
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import engine_from_config, pool, create_engine
+from sqlalchemy import pool, create_engine
 from app.database import Base
 from app.config import DATABASE_URL
-import app.models
 
 from alembic import context
 

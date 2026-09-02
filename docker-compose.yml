@@ -38,6 +38,9 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:8000}
       ENCRYPT_AT_REST: ${ENCRYPT_AT_REST:-false}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      # Defaults to production for safety: demo users are only seeded when
+      # ENVIRONMENT is explicitly set to a non-production value.
+      ENVIRONMENT: ${ENVIRONMENT:-production}
     ports:
       - "8000:8000"
     volumes:

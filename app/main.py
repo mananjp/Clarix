@@ -88,7 +88,11 @@ async def correlation_id_middleware(request: Request, call_next):
 # ---------------------------------------------------------------------------
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    logger.warning("Rate limit exceeded on path %s for IP %s", request.url.path, request.client.host if request.client else "unknown")
+    logger.warning(
+        "Rate limit exceeded on path %s for IP %s",
+        request.url.path,
+        request.client.host if request.client else "unknown",
+    )
     return JSONResponse(
         status_code=429,
         content={
@@ -106,6 +110,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     if SENTRY_DSN:
         try:
             import sentry_sdk
+
             sentry_sdk.capture_exception(exc)
         except Exception:
             pass
@@ -126,20 +131,23 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ---------------------------------------------------------------------------
 @app.on_event("startup")
 def on_startup():
-    from app.seed_regulations import seed_database
+    from app.seed_regulations import seed_reference_data, seed_demo_users
     from app.auth import SECRET_KEY
 
     if not SECRET_KEY:
-        raise RuntimeError(
-            "SECRET_KEY is not set. Set the SECRET_KEY environment "
-            "variable before starting the server."
-        )
+        raise RuntimeError("SECRET_KEY is not set. Set the SECRET_KEY environment variable before starting the server.")
 
     try:
-        seed_database()
-        logger.info("Database successfully verified/seeded on startup.")
+        # Reference data (regulation fields, default org/products) is safe to
+        # seed in every environment. Demo user accounts are gated: an unset
+        # ENVIRONMENT defaults to "production", where demo users are never
+        # created. Provision production admins via scripts/create_first_admin.py.
+        seed_reference_data()
+        logger.info("Database reference data successfully verified/seeded on startup.")
     except Exception as e:
-        logger.error("Error seeding database on startup: %s", e)
+        logger.error("Error seeding reference data on startup: %s", e)
+
+    seed_demo_users()
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +155,7 @@ def on_startup():
 # ---------------------------------------------------------------------------
 allowed_origins = [
     o.strip()
-    for o in os.getenv(
-        "ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-    ).split(",")
+    for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
     if o.strip()
 ]
 app.add_middleware(

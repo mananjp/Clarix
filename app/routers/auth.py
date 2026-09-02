@@ -13,7 +13,9 @@ from app.database import get_db
 from app.models import User, Organization, UserRole
 from app.schemas import UserCreate, User as UserResponse, Token
 from app.auth import (
-    get_password_hash, verify_password, create_access_token,
+    get_password_hash,
+    verify_password,
+    create_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from app.limiter import limiter
@@ -29,11 +31,15 @@ def register_user(request: Request, user_in: UserCreate, db: Session = Depends(g
     If ``organization_name`` is supplied, a new Organization is created and
     the registrant becomes that company's Super Admin (self-serve onboarding).
     Otherwise the user joins the shared ``default_org`` (used for the demo
-    workspace and tests).
+    workspace and tests) as a Reviewer.
+
+    SECURITY: the client-supplied ``role`` field is IGNORED. Roles are never
+    self-granted on public registration — a default-org registrant is always a
+    Reviewer, and a company creator is always a Super Admin (server-assigned).
+    Elevated roles are granted only through the admin-authorized invite flow or
+    ``scripts/create_first_admin.py``.
     """
-    existing = db.query(User).filter(
-        (User.username == user_in.username) | (User.email == user_in.email)
-    ).first()
+    existing = db.query(User).filter((User.username == user_in.username) | (User.email == user_in.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username or email already registered.")
 
@@ -49,7 +55,9 @@ def register_user(request: Request, user_in: UserCreate, db: Session = Depends(g
         role = UserRole.SUPER_ADMIN.value
     else:
         organization_id = "default_org"
-        role = user_in.role or UserRole.REVIEWER.value
+        # Never trust a client-supplied role. Default-org members start as
+        # Reviewers; elevation requires the admin-authorized invite flow.
+        role = UserRole.REVIEWER.value
 
     db_user = User(
         id=str(uuid.uuid4()),
@@ -58,7 +66,7 @@ def register_user(request: Request, user_in: UserCreate, db: Session = Depends(g
         hashed_password=get_password_hash(user_in.password),
         role=role,
         active=user_in.active,
-        organization_id=organization_id
+        organization_id=organization_id,
     )
     db.add(db_user)
     db.commit()
@@ -68,10 +76,10 @@ def register_user(request: Request, user_in: UserCreate, db: Session = Depends(g
 
 @router.post("/auth/token", response_model=Token)
 @limiter.limit("5/minute")
-def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(
-        (User.username == form_data.username) | (User.email == form_data.username)
-    ).first()
+def login_for_access_token(
+    request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+):
+    user = db.query(User).filter((User.username == form_data.username) | (User.email == form_data.username)).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -79,7 +87,5 @@ def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestFor
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
+    access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}

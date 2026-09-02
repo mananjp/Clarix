@@ -42,15 +42,26 @@ def create_invite(
     if not (invite_in.email and invite_in.email.strip()):
         raise HTTPException(status_code=422, detail="email is required.")
 
+    valid_roles = {role.value for role in UserRole}
+    if invite_in.role and invite_in.role not in valid_roles:
+        raise HTTPException(
+            status_code=422,
+            detail=f"role must be one of: {', '.join(sorted(valid_roles))}",
+        )
+
     existing_user = db.query(User).filter(User.email == invite_in.email.strip()).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="A user with that email already exists.")
 
-    existing_invite = db.query(Invite).filter(
-        Invite.email == invite_in.email.strip(),
-        Invite.organization_id == org_id,
-        Invite.status == "pending",
-    ).first()
+    existing_invite = (
+        db.query(Invite)
+        .filter(
+            Invite.email == invite_in.email.strip(),
+            Invite.organization_id == org_id,
+            Invite.status == "pending",
+        )
+        .first()
+    )
     if existing_invite:
         raise HTTPException(status_code=400, detail="An invite for that email is already pending.")
 
@@ -84,10 +95,14 @@ def list_invites(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only view invites in your own organization.",
         )
-    return db.query(Invite).filter(
-        Invite.organization_id == org_id,
-        Invite.status == "pending",
-    ).all()
+    return (
+        db.query(Invite)
+        .filter(
+            Invite.organization_id == org_id,
+            Invite.status == "pending",
+        )
+        .all()
+    )
 
 
 @router.post("/invites/accept")
@@ -101,9 +116,7 @@ def accept_invite(accept_in: InviteAccept, db: Session = Depends(get_db)):
     if invite.expires_at and invite.expires_at < datetime.datetime.utcnow():
         raise HTTPException(status_code=400, detail="Invite expired.")
 
-    existing = db.query(User).filter(
-        (User.username == accept_in.username) | (User.email == invite.email)
-    ).first()
+    existing = db.query(User).filter((User.username == accept_in.username) | (User.email == invite.email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username or email already registered.")
 

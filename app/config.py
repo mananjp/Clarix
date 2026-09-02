@@ -8,6 +8,11 @@ load_dotenv()
 # Base Directory of the application
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Application environment. Options: development | staging | production (default).
+# An unset/blank ENVIRONMENT is treated as "production" so that demo user
+# seeding and other dev-only behaviour never run by accident on a deployed host.
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production").strip().lower()
+
 # Database configuration
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -15,6 +20,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 # Upload directory
 UPLOAD_DIR = DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # --- Database selection -----------------------------------------------------
 #   USE_POSTGRES=true  -> connect to the local Docker PostgreSQL (see docker-compose.yml)
@@ -52,16 +58,13 @@ SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
 if not SECRET_KEY:
     raise RuntimeError(
         "SECRET_KEY environment variable is not set. "
-        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\" "
+        'Generate one with: python -c "import secrets; print(secrets.token_hex(32))" '
         "and add it to your .env file."
     )
 
 # Default settings
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-oss-120b")
-SUPPORTED_MODELS = [
-    "openai/gpt-oss-120b",
-    "gemma2-9b-it"
-]
+SUPPORTED_MODELS = ["openai/gpt-oss-120b", "gemma2-9b-it"]
 
 # ---------------------------------------------------------------------------
 # EU data residency & hosting configuration
