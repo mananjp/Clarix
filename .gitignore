@@ -7,9 +7,11 @@ ENV/
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
 .pytest_cache/
 .ruff_cache/
+
+# Test / coverage artifacts
+.coverage
 
 # Application data & local databases
 data/
