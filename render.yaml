@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: clarix-backend
+    runtime: image
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: https://clarix-tan-ten.vercel.app,https://clarix-backend-0tz3.onrender.com
+      - key: ENCRYPT_AT_REST
+        value: "true"
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: LOG_FORMAT
+        value: json

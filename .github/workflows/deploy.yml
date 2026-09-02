@@ -1,115 +1,21 @@
-name: Clarix CI
+name: Deploy to Render
 
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+  workflow_call:
+    secrets:
+      RENDER_API_KEY:
+        required: true
+      RENDER_SERVICE_ID:
+        required: true
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install ruff
-        run: pip install ruff
-
-      - name: Run ruff (backend)
-        run: ruff check app/ tests/ scripts/ --output-format=github
-
-  test:
-    name: Test (Postgres 16)
-    runs-on: ubuntu-latest
-    needs: lint
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: clarix_test
-          POSTGRES_USER: clarix_user
-          POSTGRES_PASSWORD: clarix_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      SECRET_KEY: ci-test-secret-key-not-for-production
-      DATABASE_URL: postgresql://clarix_user:clarix_password@localhost:5432/clarix_test
-      GROQ_API_KEY: ""
-      LOG_FORMAT: json
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run pytest
-        run: pytest tests/ -v --tb=short
-
-  migration-check:
-    name: Migration Check (Postgres 16)
-    runs-on: ubuntu-latest
-    needs: lint
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: clarix_test
-          POSTGRES_USER: clarix_user
-          POSTGRES_PASSWORD: clarix_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      SECRET_KEY: ci-test-secret-key-not-for-production
-      DATABASE_URL: postgresql://clarix_user:clarix_password@localhost:5432/clarix_test
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run migration integrity check
-        run: python scripts/check_migrations.py
-
   deploy:
     name: Deploy to Render
     runs-on: ubuntu-latest
-    needs: [lint, test, migration-check]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
